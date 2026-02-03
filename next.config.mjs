@@ -1,12 +1,8 @@
-/** @type {import('next').NextConfig} */
 const nextConfig = {
-  typescript: {
-    ignoreBuildErrors: true,
+  webpack: (config) => {
+    config.cache = false;
+    return config;
   },
-  images: {
-    unoptimized: true,
-  },
- 
-}
+};
 
-export default nextConfig
+export default nextConfig;

@@ -240,7 +240,7 @@ export default function HomePage() {
               <span className="text-sm font-medium">KIT Lost & Found</span>
             </div>
             <p className="text-sm text-muted-foreground">
-              &copy; 2024 Kirirom Institute of Technology. All rights reserved.
+              &copy; 2026 KIT Lost and Found. All rights reserved.
             </p>
           </div>
         </div>
