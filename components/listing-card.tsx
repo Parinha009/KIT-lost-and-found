@@ -1,5 +1,6 @@
 "use client"
 
+import Image from "next/image"
 import Link from "next/link"
 import { Card, CardContent, CardFooter } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -18,12 +19,14 @@ export function ListingCard({ listing }: ListingCardProps) {
   return (
     <Card className="h-full overflow-hidden py-0 gap-0 transition-shadow hover:shadow-md">
       {/* Image */}
-      <div className="relative w-full bg-muted" style={{ aspectRatio: "16 / 10" }}>
+      <div className="relative h-[220px] w-full overflow-hidden bg-muted">
         {hasPhoto ? (
-          <img
+          <Image
             src={listing.photos[0].url || "/placeholder.svg"}
             alt={listing.title}
-            className="w-full h-full object-cover"
+            fill
+            sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
+            className="object-cover object-center"
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center">
