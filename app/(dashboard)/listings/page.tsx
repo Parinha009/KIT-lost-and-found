@@ -15,16 +15,13 @@ import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
 import { ListingCard } from "@/components/listing-card"
 import { mockListings } from "@/lib/mock-data"
-import { useAuth } from "@/lib/auth-context"
 import { ITEM_CATEGORIES, CAMPUS_LOCATIONS } from "@/lib/types"
 import { Search, Filter, X, Package } from "lucide-react"
 
 function ListingsPageContent() {
   const searchParams = useSearchParams()
   const successMessage = searchParams.get("success")
-  const { user } = useAuth()
-  const isStaffOrAdmin = user?.role === "staff" || user?.role === "admin"
-  const defaultStatusFilter = isStaffOrAdmin ? "all" : "active"
+  const defaultStatusFilter = "all"
 
   const [search, setSearch] = useState("")
   const [typeFilter, setTypeFilter] = useState<string>("all")

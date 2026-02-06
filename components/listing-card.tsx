@@ -16,9 +16,9 @@ export function ListingCard({ listing }: ListingCardProps) {
   const hasPhoto = listing.photos && listing.photos.length > 0
 
   return (
-    <Card className="overflow-hidden hover:shadow-md transition-shadow">
+    <Card className="h-full overflow-hidden py-0 gap-0 transition-shadow hover:shadow-md">
       {/* Image */}
-      <div className="relative aspect-video bg-muted">
+      <div className="relative w-full bg-muted" style={{ aspectRatio: "16 / 10" }}>
         {hasPhoto ? (
           <img
             src={listing.photos[0].url || "/placeholder.svg"}
@@ -45,7 +45,7 @@ export function ListingCard({ listing }: ListingCardProps) {
         )}
       </div>
 
-      <CardContent className="p-4">
+      <CardContent className="flex flex-1 flex-col p-4">
         {/* Title */}
         <h3 className="font-semibold text-foreground line-clamp-1">{listing.title}</h3>
 
@@ -70,7 +70,7 @@ export function ListingCard({ listing }: ListingCardProps) {
         </div>
       </CardContent>
 
-      <CardFooter className="p-4 pt-0">
+      <CardFooter className="mt-auto p-4 pt-0">
         <Button variant="outline" size="sm" className="w-full bg-transparent" asChild>
           <Link href={`/listings/${listing.id}`}>
             <Eye className="w-4 h-4 mr-2" />
