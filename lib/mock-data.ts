@@ -54,7 +54,14 @@ export const mockListings: Listing[] = [
     status: "active",
     user_id: "user-1",
     user: mockUsers[0],
-    photos: [],
+    photos: [
+      {
+        id: "photo-0",
+        url: "/wallet-black.jpg",
+        listing_id: "listing-1",
+        created_at: "2024-01-20T14:00:00Z",
+      },
+    ],
     created_at: "2024-01-20T14:00:00Z",
     updated_at: "2024-01-20T14:00:00Z",
   },
@@ -121,7 +128,14 @@ export const mockListings: Listing[] = [
     status: "active",
     user_id: "user-1",
     user: mockUsers[0],
-    photos: [],
+    photos: [
+      {
+        id: "photo-4",
+        url: "/car-keys-kit-keychain.jpg",
+        listing_id: "listing-4",
+        created_at: "2024-01-23T09:00:00Z",
+      },
+    ],
     created_at: "2024-01-23T09:00:00Z",
     updated_at: "2024-01-23T09:00:00Z",
   },
@@ -160,7 +174,14 @@ export const mockListings: Listing[] = [
     status: "active",
     user_id: "user-1",
     user: mockUsers[0],
-    photos: [],
+    photos: [
+      {
+        id: "photo-6",
+        url: "/airpods-pro-case.jpg",
+        listing_id: "listing-6",
+        created_at: "2024-01-24T19:00:00Z",
+      },
+    ],
     created_at: "2024-01-24T19:00:00Z",
     updated_at: "2024-01-24T19:00:00Z",
   },
