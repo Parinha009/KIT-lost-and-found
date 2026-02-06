@@ -1,16 +1,29 @@
 "use client"
 
-import React from "react"
-
-import { useState } from "react"
+import { useState, type FormEvent } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
+import { Search, Eye, EyeOff, ArrowLeft } from "lucide-react"
 import { useAuth } from "@/lib/auth-context"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Search, Eye, EyeOff, ArrowLeft } from "lucide-react"
+
+type DemoRole = "student" | "staff" | "admin"
+
+interface FieldErrors {
+  email?: string
+  password?: string
+}
+
+const demoEmails: Record<DemoRole, string> = {
+  student: "student@kit.edu.kh",
+  staff: "security@kit.edu.kh",
+  admin: "admin@kit.edu.kh",
+}
+
+const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 export default function LoginPage() {
   const router = useRouter()
@@ -18,42 +31,96 @@ export default function LoginPage() {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [showPassword, setShowPassword] = useState(false)
-  const [error, setError] = useState("")
-
+  const [formError, setFormError] = useState("")
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({})
   const [isSubmitting, setIsSubmitting] = useState(false)
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setError("")
-    setIsSubmitting(true)
+  const isFormDisabled = isSubmitting || isLoading
 
-    if (!email || !password) {
-      setError("Please fill in all fields")
-      setIsSubmitting(false)
+  const clearGlobalError = () => {
+    if (formError) {
+      setFormError("")
+    }
+  }
+
+  const handleEmailChange = (value: string) => {
+    setEmail(value)
+    clearGlobalError()
+    if (fieldErrors.email) {
+      setFieldErrors((prev) => ({ ...prev, email: undefined }))
+    }
+  }
+
+  const handlePasswordChange = (value: string) => {
+    setPassword(value)
+    clearGlobalError()
+    if (fieldErrors.password) {
+      setFieldErrors((prev) => ({ ...prev, password: undefined }))
+    }
+  }
+
+  const validateForm = () => {
+    const nextErrors: FieldErrors = {}
+    const trimmedEmail = email.trim()
+
+    if (!trimmedEmail) {
+      nextErrors.email = "Email is required."
+    } else if (!emailPattern.test(trimmedEmail)) {
+      nextErrors.email = "Enter a valid email address."
+    }
+
+    if (!password) {
+      nextErrors.password = "Password is required."
+    }
+
+    setFieldErrors(nextErrors)
+
+    return {
+      isValid: Object.keys(nextErrors).length === 0,
+      trimmedEmail,
+    }
+  }
+
+  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    setFormError("")
+
+    const { isValid, trimmedEmail } = validateForm()
+    if (!isValid) {
       return
     }
 
-    const result = await login(email, password)
-    if (result.success) {
-      router.push("/dashboard")
-    } else {
-      setError(result.error || "Login failed")
+    setIsSubmitting(true)
+    try {
+      const result = await login(trimmedEmail, password)
+      if (result.success) {
+        router.push("/dashboard")
+        return
+      }
+
+      setFormError(result.error || "Unable to sign in. Please try again.")
+    } catch {
+      setFormError("Unable to sign in right now. Please try again.")
+    } finally {
       setIsSubmitting(false)
     }
   }
 
-  // Quick login buttons for demo
-  const handleDemoLogin = async (role: "student" | "staff" | "admin") => {
+  const handleDemoLogin = async (role: DemoRole) => {
+    setFormError("")
+    setFieldErrors({})
     setIsSubmitting(true)
-    const emails = {
-      student: "student@kit.edu.kh",
-      staff: "security@kit.edu.kh",
-      admin: "admin@kit.edu.kh",
-    }
-    const result = await login(emails[role], "demo")
-    if (result.success) {
-      router.push("/dashboard")
-    } else {
+    try {
+      const result = await login(demoEmails[role], "demo")
+      if (result.success) {
+        router.push("/dashboard")
+        return
+      }
+
+      setFormError(result.error || "Demo login failed. Please try again.")
+    } catch {
+      setFormError("Demo login failed. Please try again.")
+    } finally {
       setIsSubmitting(false)
     }
   }
@@ -61,16 +128,14 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-background p-4">
       <div className="w-full max-w-md">
-        {/* Back to Home */}
-        <Link 
-          href="/" 
+        <Link
+          href="/"
           className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground mb-6 transition-colors"
         >
           <ArrowLeft className="h-4 w-4" />
           Back to Home
         </Link>
 
-        {/* Logo */}
         <div className="flex items-center justify-center gap-2 mb-8">
           <div className="flex items-center justify-center w-10 h-10 bg-primary rounded-lg">
             <Search className="w-5 h-5 text-primary-foreground" />
@@ -86,10 +151,10 @@ export default function LoginPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              {error && (
-                <div className="p-3 text-sm text-destructive bg-destructive/10 rounded-md">
-                  {error}
+            <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+              {formError && (
+                <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive" role="alert">
+                  {formError}
                 </div>
               )}
 
@@ -99,19 +164,24 @@ export default function LoginPage() {
                   id="email"
                   type="email"
                   placeholder="you@kit.edu.kh"
+                  autoComplete="email"
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  disabled={isSubmitting}
+                  onChange={(e) => handleEmailChange(e.target.value)}
+                  aria-invalid={Boolean(fieldErrors.email)}
+                  aria-describedby={fieldErrors.email ? "email-error" : undefined}
+                  disabled={isFormDisabled}
                 />
+                {fieldErrors.email && (
+                  <p id="email-error" className="text-sm text-destructive">
+                    {fieldErrors.email}
+                  </p>
+                )}
               </div>
 
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <Label htmlFor="password">Password</Label>
-                  <Link
-                    href="/forgot-password"
-                    className="text-sm text-primary hover:underline"
-                  >
+                  <Link href="/forgot-password" className="text-sm text-primary hover:underline">
                     Forgot password?
                   </Link>
                 </div>
@@ -120,21 +190,31 @@ export default function LoginPage() {
                     id="password"
                     type={showPassword ? "text" : "password"}
                     placeholder="Enter your password"
+                    autoComplete="current-password"
                     value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    disabled={isSubmitting}
+                    onChange={(e) => handlePasswordChange(e.target.value)}
+                    aria-invalid={Boolean(fieldErrors.password)}
+                    aria-describedby={fieldErrors.password ? "password-error" : undefined}
+                    disabled={isFormDisabled}
                   />
                   <button
                     type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    onClick={() => setShowPassword((current) => !current)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60"
+                    aria-label={showPassword ? "Hide password" : "Show password"}
+                    disabled={isFormDisabled}
                   >
                     {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
                 </div>
+                {fieldErrors.password && (
+                  <p id="password-error" className="text-sm text-destructive">
+                    {fieldErrors.password}
+                  </p>
+                )}
               </div>
 
-              <Button type="submit" className="w-full" disabled={isSubmitting}>
+              <Button type="submit" className="w-full" disabled={isFormDisabled}>
                 {isSubmitting ? "Signing in..." : "Sign in"}
               </Button>
             </form>
@@ -155,7 +235,7 @@ export default function LoginPage() {
                   variant="outline"
                   size="sm"
                   onClick={() => handleDemoLogin("student")}
-                  disabled={isSubmitting}
+                  disabled={isFormDisabled}
                 >
                   Student
                 </Button>
@@ -164,7 +244,7 @@ export default function LoginPage() {
                   variant="outline"
                   size="sm"
                   onClick={() => handleDemoLogin("staff")}
-                  disabled={isSubmitting}
+                  disabled={isFormDisabled}
                 >
                   Staff
                 </Button>
@@ -173,7 +253,7 @@ export default function LoginPage() {
                   variant="outline"
                   size="sm"
                   onClick={() => handleDemoLogin("admin")}
-                  disabled={isSubmitting}
+                  disabled={isFormDisabled}
                 >
                   Admin
                 </Button>
