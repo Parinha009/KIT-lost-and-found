@@ -15,18 +15,22 @@ import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
 import { ListingCard } from "@/components/listing-card"
 import { mockListings } from "@/lib/mock-data"
+import { useAuth } from "@/lib/auth-context"
 import { ITEM_CATEGORIES, CAMPUS_LOCATIONS } from "@/lib/types"
 import { Search, Filter, X, Package } from "lucide-react"
 
 function ListingsPageContent() {
   const searchParams = useSearchParams()
   const successMessage = searchParams.get("success")
+  const { user } = useAuth()
+  const isStaffOrAdmin = user?.role === "staff" || user?.role === "admin"
+  const defaultStatusFilter = isStaffOrAdmin ? "all" : "active"
 
   const [search, setSearch] = useState("")
   const [typeFilter, setTypeFilter] = useState<string>("all")
   const [categoryFilter, setCategoryFilter] = useState<string>("all")
   const [locationFilter, setLocationFilter] = useState<string>("all")
-  const [statusFilter, setStatusFilter] = useState<string>("active")
+  const [statusFilter, setStatusFilter] = useState<string>(defaultStatusFilter)
   const [showFilters, setShowFilters] = useState(false)
 
   const filteredListings = useMemo(() => {
@@ -61,14 +65,14 @@ function ListingsPageContent() {
     typeFilter !== "all",
     categoryFilter !== "all",
     locationFilter !== "all",
-    statusFilter !== "active",
+    statusFilter !== defaultStatusFilter,
   ].filter(Boolean).length
 
   const clearFilters = () => {
     setTypeFilter("all")
     setCategoryFilter("all")
     setLocationFilter("all")
-    setStatusFilter("active")
+    setStatusFilter(defaultStatusFilter)
   }
 
   return (
@@ -240,10 +244,10 @@ function ListingsPageContent() {
                 </button>
               </Badge>
             )}
-            {statusFilter !== "active" && (
+            {statusFilter !== defaultStatusFilter && (
               <Badge variant="secondary" className="capitalize">
                 {statusFilter}
-                <button onClick={() => setStatusFilter("active")} className="ml-1">
+                <button onClick={() => setStatusFilter(defaultStatusFilter)} className="ml-1">
                   <X className="w-3 h-3" />
                 </button>
               </Badge>
