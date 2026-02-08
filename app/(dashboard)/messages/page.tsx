@@ -104,21 +104,21 @@ export default function MessagesPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+    <div className="space-y-5">
+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Messages</h1>
-          <p className="text-muted-foreground">
+          <h1 className="text-4xl font-bold tracking-tight text-foreground">Messages</h1>
+          <p className="mt-1 text-muted-foreground">
             Coordinate item verification and handover with users.
           </p>
         </div>
-        <Badge variant="outline" className="w-fit">
+        <Badge variant="outline" className="w-fit rounded-md px-3 py-1 text-sm">
           {unreadCount} unread
         </Badge>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-[340px_1fr]">
-        <Card className="h-[420px] gap-0 overflow-hidden py-0 md:h-[520px] lg:h-[calc(100vh-220px)]">
+      <div className="grid gap-4 xl:grid-cols-[360px_1fr]">
+        <Card className="h-[420px] gap-0 overflow-hidden rounded-2xl py-0 md:h-[560px]">
           <div className="border-b border-border p-4">
             <div className="relative">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -126,7 +126,7 @@ export default function MessagesPage() {
                 value={searchQuery}
                 onChange={(event) => setSearchQuery(event.target.value)}
                 placeholder="Search conversations..."
-                className="pl-9"
+                className="h-12 rounded-lg pl-10 text-base"
               />
             </div>
           </div>
@@ -137,7 +137,7 @@ export default function MessagesPage() {
           />
         </Card>
 
-        <Card className="h-[520px] gap-0 overflow-hidden py-0 lg:h-[calc(100vh-220px)]">
+        <Card className="h-[560px] gap-0 overflow-hidden rounded-2xl py-0">
           <ChatThread conversation={activeConversation} messages={threadMessages} />
           <div className="border-t border-border p-4">
             {activeConversation ? (

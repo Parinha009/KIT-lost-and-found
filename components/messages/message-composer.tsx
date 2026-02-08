@@ -2,8 +2,8 @@
 
 import { type KeyboardEvent } from "react"
 import { Button } from "@/components/ui/button"
-import { Textarea } from "@/components/ui/textarea"
-import { Send } from "lucide-react"
+import { Input } from "@/components/ui/input"
+import { Image as ImageIcon, Send } from "lucide-react"
 
 interface MessageComposerProps {
   value: string
@@ -18,7 +18,7 @@ export function MessageComposer({
   onSend,
   disabled = false,
 }: MessageComposerProps) {
-  const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+  const handleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault()
       onSend()
@@ -26,21 +26,35 @@ export function MessageComposer({
   }
 
   return (
-    <div className="space-y-2">
-      <Textarea
+    <div className="flex items-center gap-2">
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        className="h-9 w-9 shrink-0 text-muted-foreground"
+        disabled={disabled}
+        aria-label="Attach image"
+      >
+        <ImageIcon className="h-4 w-4" />
+      </Button>
+      <Input
         value={value}
         onChange={(event) => onChange(event.target.value)}
         onKeyDown={handleKeyDown}
         placeholder="Type your message..."
-        className="min-h-[84px] resize-none"
+        className="h-10"
         disabled={disabled}
       />
-      <div className="flex justify-end">
-        <Button onClick={onSend} disabled={disabled || !value.trim()}>
-          <Send className="mr-2 h-4 w-4" />
-          Send
-        </Button>
-      </div>
+      <Button
+        type="button"
+        size="icon"
+        className="h-10 w-10 shrink-0 bg-primary/75 hover:bg-primary"
+        onClick={onSend}
+        disabled={disabled || !value.trim()}
+        aria-label="Send message"
+      >
+        <Send className="h-4 w-4" />
+      </Button>
     </div>
   )
 }

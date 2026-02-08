@@ -28,6 +28,7 @@ export function ConversationList({
     <div className="h-full overflow-y-auto">
       {conversations.map((conversation) => {
         const isActive = conversation.id === selectedConversationId
+        const itemType = conversation.itemId === "listing-1" ? "lost" : "found"
         return (
           <button
             key={conversation.id}
@@ -36,42 +37,49 @@ export function ConversationList({
             className={cn(
               "w-full border-b border-border px-4 py-3 text-left transition-colors",
               "hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-              isActive && "bg-primary/10"
+              isActive && "bg-muted"
             )}
           >
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <p className="truncate text-sm font-medium text-foreground">
-                  {conversation.participantName}
-                </p>
-                <p className="text-xs capitalize text-muted-foreground">
-                  {conversation.participantRole}
+            <div className="flex items-start gap-3">
+              <span className="mt-0.5 h-8 w-8 shrink-0 rounded-full bg-muted-foreground/20" />
+              <div className="min-w-0 flex-1">
+                <div className="flex items-start justify-between gap-3">
+                  <p className="truncate text-sm font-semibold text-foreground">
+                    {conversation.participantName}
+                  </p>
+                  <div className="flex items-center gap-2">
+                    {conversation.unreadCount > 0 && (
+                      <Badge variant="destructive" className="h-4 min-w-4 px-1 text-[10px]">
+                        {conversation.unreadCount}
+                      </Badge>
+                    )}
+                    <span className="shrink-0 text-xs text-muted-foreground">
+                      {formatDistanceToNow(conversation.lastMessageAt)}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="mt-1 flex items-center gap-1.5">
+                  <span
+                    className={cn(
+                      "rounded px-1.5 py-0.5 text-[10px] font-medium capitalize",
+                      itemType === "found"
+                        ? "bg-green-500/15 text-green-700"
+                        : "bg-red-500/15 text-red-700"
+                    )}
+                  >
+                    {itemType}
+                  </span>
+                  <span className="truncate text-xs text-muted-foreground">
+                    {conversation.itemTitle}
+                  </span>
+                </div>
+
+                <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">
+                  {conversation.lastMessage}
                 </p>
               </div>
-              <div className="flex items-center gap-2">
-                {conversation.unreadCount > 0 && (
-                  <Badge variant="destructive" className="h-5 px-1.5 text-xs">
-                    {conversation.unreadCount}
-                  </Badge>
-                )}
-                <span className="shrink-0 text-xs text-muted-foreground">
-                  {formatDistanceToNow(conversation.lastMessageAt)}
-                </span>
-              </div>
             </div>
-
-            <div className="mt-2 flex items-center gap-2">
-              <span className="truncate text-xs font-medium text-foreground">
-                {conversation.itemTitle}
-              </span>
-              <Badge variant="outline" className="shrink-0 capitalize text-[10px]">
-                {conversation.itemStatus}
-              </Badge>
-            </div>
-
-            <p className="mt-1 line-clamp-1 text-xs text-muted-foreground">
-              {conversation.lastMessage}
-            </p>
           </button>
         )
       })}
