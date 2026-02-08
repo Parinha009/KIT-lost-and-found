@@ -5,7 +5,9 @@ import React from "react"
 import { useState, useEffect, Suspense } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useAuth } from "@/lib/auth-context"
-import { createListingSchema, createClaimSchema } from "@/lib/validators"
+import { createListingSchema } from "@/lib/validators"
+import { createListing } from "@/lib/items"
+import { uploadListingImages } from "@/lib/upload-adapter"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -19,7 +21,13 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { ITEM_CATEGORIES, CAMPUS_LOCATIONS, type ListingType } from "@/lib/types"
+import {
+  ITEM_CATEGORIES,
+  CAMPUS_LOCATIONS,
+  type CampusLocation,
+  type ItemCategory,
+  type ListingType,
+} from "@/lib/types"
 import { Package, Search, Upload, X, MapPin, Calendar, FileText } from "lucide-react"
 import { toast } from "sonner"
 import { ZodError } from "zod"
@@ -106,26 +114,34 @@ function ReportPageContent() {
     setFieldErrors({})
 
     try {
-      // For found items, require at least one photo
       const dataToValidate = {
         ...formData,
         type: activeTab,
       }
 
-      // Validate using Zod schema
       const validatedData = createListingSchema.parse(dataToValidate)
 
-      // Additional check for found items photos
       if (activeTab === "found" && photos.length === 0) {
         toast.error("Found items must include at least one photo")
         setIsSubmitting(false)
         return
       }
 
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1500))
+      if (!user) {
+        toast.error("You must be logged in to create a listing")
+        setIsSubmitting(false)
+        return
+      }
 
-      // Success
+      const uploadedPhotoUrls = await uploadListingImages(photos)
+      createListing({
+        ...validatedData,
+        category: validatedData.category as ItemCategory,
+        location: validatedData.location as CampusLocation,
+        user_id: user.id,
+        photoUrls: uploadedPhotoUrls,
+      })
+
       const itemType = activeTab === "lost" ? "Lost" : "Found"
       toast.success(`${itemType} item reported successfully!`)
       router.push("/listings?success=true&type=" + activeTab)

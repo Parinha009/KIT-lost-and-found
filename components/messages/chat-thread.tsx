@@ -84,3 +84,4 @@ export function ChatThread({ conversation, messages }: ChatThreadProps) {
     </div>
   )
 }
+

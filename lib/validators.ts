@@ -2,9 +2,6 @@ import { z } from 'zod'
 import {
   ITEM_CATEGORIES,
   CAMPUS_LOCATIONS,
-  type ListingType,
-  type ItemCategory,
-  type CampusLocation,
 } from './types'
 
 // Create listing form validation
@@ -88,3 +85,37 @@ export const listingFiltersSchema = z.object({
 })
 
 export type ListingFiltersInput = z.infer<typeof listingFiltersSchema>
+
+// Register form validation
+export const registerSchema = z
+  .object({
+    name: z
+      .string()
+      .trim()
+      .min(2, "Full name must be at least 2 characters")
+      .max(100, "Full name must not exceed 100 characters"),
+    email: z
+      .string()
+      .trim()
+      .email("Please enter a valid email address")
+      .refine((value) => value.endsWith("@kit.edu.kh"), {
+        message: "Please use your KIT campus email (@kit.edu.kh)",
+      }),
+    phone: z
+      .string()
+      .trim()
+      .max(30, "Phone number must not exceed 30 characters")
+      .optional()
+      .or(z.literal("")),
+    password: z
+      .string()
+      .min(6, "Password must be at least 6 characters")
+      .max(100, "Password must not exceed 100 characters"),
+    confirmPassword: z.string().min(1, "Please confirm your password"),
+  })
+  .refine((data) => data.password === data.confirmPassword, {
+    message: "Passwords do not match",
+    path: ["confirmPassword"],
+  })
+
+export type RegisterInput = z.infer<typeof registerSchema>

@@ -10,14 +10,14 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ListingCard } from "@/components/listing-card"
-import { mockListings } from "@/lib/mock-data"
+import { getListings } from "@/lib/items"
 import { Plus, Package, Search, FileText } from "lucide-react"
 
 export default function MyListingsPage() {
   const { user } = useAuth()
 
   const myListings = useMemo(() => {
-    return mockListings.filter((l) => l.user_id === user?.id)
+    return getListings().filter((listing) => listing.user_id === user?.id)
   }, [user?.id])
 
   const lostListings = myListings.filter((l) => l.type === "lost")

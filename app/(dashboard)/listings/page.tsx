@@ -14,7 +14,7 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
 import { ListingCard } from "@/components/listing-card"
-import { mockListings } from "@/lib/mock-data"
+import { getListings } from "@/lib/items"
 import { ITEM_CATEGORIES, CAMPUS_LOCATIONS } from "@/lib/types"
 import { Search, Filter, X, Package } from "lucide-react"
 
@@ -29,9 +29,10 @@ function ListingsPageContent() {
   const [locationFilter, setLocationFilter] = useState<string>("all")
   const [statusFilter, setStatusFilter] = useState<string>(defaultStatusFilter)
   const [showFilters, setShowFilters] = useState(false)
+  const allListings = useMemo(() => getListings(), [successMessage])
 
   const filteredListings = useMemo(() => {
-    return mockListings.filter((listing) => {
+    return allListings.filter((listing) => {
       // Search filter
       if (search) {
         const searchLower = search.toLowerCase()
@@ -56,7 +57,7 @@ function ListingsPageContent() {
 
       return true
     })
-  }, [search, typeFilter, categoryFilter, locationFilter, statusFilter])
+  }, [allListings, search, typeFilter, categoryFilter, locationFilter, statusFilter])
 
   const activeFiltersCount = [
     typeFilter !== "all",

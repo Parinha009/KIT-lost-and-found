@@ -1,9 +1,11 @@
 "use client"
 
-import { use, useState } from "react"
+import { use, useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/lib/auth-context"
+import { createClaimSchema } from "@/lib/validators"
+import { deleteListing, getListing, getListingClaims, updateListing } from "@/lib/items"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -20,20 +22,21 @@ import {
 } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
+import { Input } from "@/components/ui/input"
 import {
   ArrowLeft,
   MapPin,
   Calendar,
   Package,
-  User,
   Clock,
   MessageSquare,
   AlertCircle,
   CheckCircle,
   Archive,
+  Trash2,
 } from "lucide-react"
-import { getListingById, getClaimsByListingId } from "@/lib/mock-data"
 import { formatDate, formatDateTime } from "@/lib/date-utils"
+import { toast } from "sonner"
 
 interface ListingDetailPageProps {
   params: Promise<{ id: string }>
@@ -44,11 +47,35 @@ export default function ListingDetailPage({ params }: ListingDetailPageProps) {
   const router = useRouter()
   const { user } = useAuth()
   const [claimDialogOpen, setClaimDialogOpen] = useState(false)
+  const [editDialogOpen, setEditDialogOpen] = useState(false)
   const [claimProof, setClaimProof] = useState("")
+  const [refreshKey, setRefreshKey] = useState(0)
+  const [editForm, setEditForm] = useState({
+    title: "",
+    description: "",
+    locationDetails: "",
+  })
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isSavingEdit, setIsSavingEdit] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
 
-  const listing = getListingById(resolvedParams.id)
-  const claims = listing ? getClaimsByListingId(listing.id) : []
+  const listing = useMemo(
+    () => getListing(resolvedParams.id),
+    [resolvedParams.id, refreshKey]
+  )
+  const claims = useMemo(
+    () => (listing ? getListingClaims(listing.id) : []),
+    [listing]
+  )
+
+  useEffect(() => {
+    if (!listing) return
+    setEditForm({
+      title: listing.title,
+      description: listing.description,
+      locationDetails: listing.location_details || "",
+    })
+  }, [listing])
 
   if (!listing) {
     return (
@@ -73,16 +100,86 @@ export default function ListingDetailPage({ params }: ListingDetailPageProps) {
   )
 
   const handleSubmitClaim = async () => {
-    if (!claimProof.trim()) return
+    if (!listing) return
 
     setIsSubmitting(true)
-    // Simulate API call
-    await new Promise((resolve) => setTimeout(resolve, 1500))
-    setIsSubmitting(false)
-    setClaimDialogOpen(false)
-    setClaimProof("")
-    // Show success message or redirect
-    router.refresh()
+    try {
+      createClaimSchema.parse({
+        listing_id: listing.id,
+        proof_description: claimProof,
+      })
+
+      await new Promise((resolve) => setTimeout(resolve, 800))
+      setClaimDialogOpen(false)
+      setClaimProof("")
+      toast.success("Claim submitted for review")
+    } catch {
+      toast.error("Please provide clearer proof (at least 20 characters)")
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  const handleSaveEdit = async () => {
+    if (!listing) return
+
+    const title = editForm.title.trim()
+    const description = editForm.description.trim()
+    const locationDetails = editForm.locationDetails.trim()
+
+    if (!title || !description) {
+      toast.error("Title and description are required")
+      return
+    }
+
+    setIsSavingEdit(true)
+    try {
+      const updated = updateListing(listing.id, {
+        title,
+        description,
+        location_details: locationDetails || undefined,
+      })
+
+      if (!updated) {
+        toast.error("Unable to save changes")
+        return
+      }
+
+      setEditDialogOpen(false)
+      setRefreshKey((prev) => prev + 1)
+      toast.success("Listing updated")
+    } finally {
+      setIsSavingEdit(false)
+    }
+  }
+
+  const handleCloseListing = () => {
+    if (!listing) return
+    const updated = updateListing(listing.id, { status: "closed" })
+    if (!updated) {
+      toast.error("Unable to close listing")
+      return
+    }
+    setRefreshKey((prev) => prev + 1)
+    toast.success("Listing closed")
+  }
+
+  const handleDeleteListing = () => {
+    if (!listing) return
+    if (!window.confirm("Delete this listing permanently?")) return
+
+    setIsDeleting(true)
+    try {
+      const deleted = deleteListing(listing.id)
+      if (!deleted) {
+        toast.error("Unable to delete listing")
+        return
+      }
+      toast.success("Listing deleted")
+      router.push("/listings")
+    } finally {
+      setIsDeleting(false)
+    }
   }
 
   const initials = listing.user?.name
@@ -371,11 +468,89 @@ export default function ListingDetailPage({ params }: ListingDetailPageProps) {
 
               {isOwner && (
                 <>
-                  <Button variant="outline" className="w-full bg-transparent">
-                    Edit Listing
-                  </Button>
-                  <Button variant="outline" className="w-full text-destructive bg-transparent">
+                  <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+                    <DialogTrigger asChild>
+                      <Button variant="outline" className="w-full bg-transparent">
+                        Edit Listing
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle>Edit Listing</DialogTitle>
+                        <DialogDescription>
+                          Update the listing details shown to campus users.
+                        </DialogDescription>
+                      </DialogHeader>
+                      <div className="space-y-4 py-2">
+                        <div className="space-y-2">
+                          <Label htmlFor="edit-title">Title</Label>
+                          <Input
+                            id="edit-title"
+                            value={editForm.title}
+                            onChange={(event) =>
+                              setEditForm((prev) => ({ ...prev, title: event.target.value }))
+                            }
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="edit-description">Description</Label>
+                          <Textarea
+                            id="edit-description"
+                            rows={4}
+                            value={editForm.description}
+                            onChange={(event) =>
+                              setEditForm((prev) => ({
+                                ...prev,
+                                description: event.target.value,
+                              }))
+                            }
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="edit-location-details">Location Details</Label>
+                          <Input
+                            id="edit-location-details"
+                            value={editForm.locationDetails}
+                            onChange={(event) =>
+                              setEditForm((prev) => ({
+                                ...prev,
+                                locationDetails: event.target.value,
+                              }))
+                            }
+                          />
+                        </div>
+                      </div>
+                      <DialogFooter>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => setEditDialogOpen(false)}
+                          disabled={isSavingEdit}
+                        >
+                          Cancel
+                        </Button>
+                        <Button type="button" onClick={handleSaveEdit} disabled={isSavingEdit}>
+                          {isSavingEdit ? "Saving..." : "Save Changes"}
+                        </Button>
+                      </DialogFooter>
+                    </DialogContent>
+                  </Dialog>
+                  <Button
+                    variant="outline"
+                    className="w-full bg-transparent"
+                    onClick={handleCloseListing}
+                    disabled={listing.status === "closed"}
+                  >
                     Close Listing
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="w-full text-destructive bg-transparent"
+                    onClick={handleDeleteListing}
+                    disabled={isDeleting}
+                  >
+                    <Trash2 className="mr-2 h-4 w-4" />
+                    {isDeleting ? "Deleting..." : "Delete Listing"}
                   </Button>
                 </>
               )}

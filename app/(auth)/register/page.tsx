@@ -4,11 +4,13 @@ import React from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/lib/auth-context"
+import { registerSchema } from "@/lib/validators"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Search, Eye, EyeOff, ArrowLeft } from "lucide-react"
+import { toast } from "sonner"
 
 export default function RegisterPage() {
   const router = useRouter()
@@ -22,54 +24,56 @@ export default function RegisterPage() {
   })
   const [showPassword, setShowPassword] = React.useState(false)
   const [error, setError] = React.useState("")
+  const [fieldErrors, setFieldErrors] = React.useState<Record<string, string>>({})
   const [isSubmitting, setIsSubmitting] = React.useState(false)
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target
     setFormData((prev) => ({
       ...prev,
-      [e.target.name]: e.target.value,
+      [name]: value,
     }))
+    if (fieldErrors[name]) {
+      setFieldErrors((prev) => ({ ...prev, [name]: "" }))
+    }
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError("")
+    setFieldErrors({})
 
-    // Validation
-    if (!formData.name || !formData.email || !formData.password) {
-      setError("Please fill in all required fields")
-      return
-    }
-
-    if (!formData.email.endsWith("@kit.edu.kh") && !formData.email.includes("@")) {
-      setError("Please use a valid email address")
-      return
-    }
-
-    if (formData.password.length < 6) {
-      setError("Password must be at least 6 characters")
-      return
-    }
-
-    if (formData.password !== formData.confirmPassword) {
-      setError("Passwords do not match")
+    const parsed = registerSchema.safeParse(formData)
+    if (!parsed.success) {
+      const nextErrors: Record<string, string> = {}
+      parsed.error.errors.forEach((issue) => {
+        const path = issue.path[0]
+        if (typeof path === "string" && !nextErrors[path]) {
+          nextErrors[path] = issue.message
+        }
+      })
+      setFieldErrors(nextErrors)
+      setError("Please fix the highlighted fields")
+      toast.error("Please fix the highlighted fields")
       return
     }
 
     setIsSubmitting(true)
 
     const result = await register({
-      email: formData.email,
-      password: formData.password,
-      name: formData.name,
-      phone: formData.phone || undefined,
+      email: parsed.data.email,
+      password: parsed.data.password,
+      name: parsed.data.name,
+      phone: parsed.data.phone || undefined,
     })
 
     if (result.success) {
+      toast.success("Account created successfully")
       router.push("/dashboard")
     } else {
       setIsSubmitting(false)
       setError(result.error || "Registration failed")
+      toast.error(result.error || "Registration failed")
     }
   }
 
@@ -118,7 +122,11 @@ export default function RegisterPage() {
                   value={formData.name}
                   onChange={handleChange}
                   disabled={isSubmitting}
+                  aria-invalid={Boolean(fieldErrors.name)}
                 />
+                {fieldErrors.name && (
+                  <p className="text-sm text-destructive">{fieldErrors.name}</p>
+                )}
               </div>
 
               <div className="space-y-2">
@@ -131,7 +139,11 @@ export default function RegisterPage() {
                   value={formData.email}
                   onChange={handleChange}
                   disabled={isSubmitting}
+                  aria-invalid={Boolean(fieldErrors.email)}
                 />
+                {fieldErrors.email && (
+                  <p className="text-sm text-destructive">{fieldErrors.email}</p>
+                )}
               </div>
 
               <div className="space-y-2">
@@ -144,7 +156,11 @@ export default function RegisterPage() {
                   value={formData.phone}
                   onChange={handleChange}
                   disabled={isSubmitting}
+                  aria-invalid={Boolean(fieldErrors.phone)}
                 />
+                {fieldErrors.phone && (
+                  <p className="text-sm text-destructive">{fieldErrors.phone}</p>
+                )}
               </div>
 
               <div className="space-y-2">
@@ -158,6 +174,7 @@ export default function RegisterPage() {
                     value={formData.password}
                     onChange={handleChange}
                     disabled={isSubmitting}
+                    aria-invalid={Boolean(fieldErrors.password)}
                   />
                   <button
                     type="button"
@@ -167,6 +184,9 @@ export default function RegisterPage() {
                     {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
                 </div>
+                {fieldErrors.password && (
+                  <p className="text-sm text-destructive">{fieldErrors.password}</p>
+                )}
               </div>
 
               <div className="space-y-2">
@@ -179,7 +199,11 @@ export default function RegisterPage() {
                   value={formData.confirmPassword}
                   onChange={handleChange}
                   disabled={isSubmitting}
+                  aria-invalid={Boolean(fieldErrors.confirmPassword)}
                 />
+                {fieldErrors.confirmPassword && (
+                  <p className="text-sm text-destructive">{fieldErrors.confirmPassword}</p>
+                )}
               </div>
 
               <Button type="submit" className="w-full" disabled={isSubmitting}>
