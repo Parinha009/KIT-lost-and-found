@@ -5,6 +5,7 @@ import React from "react"
 import { useState, useEffect, Suspense } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useAuth } from "@/lib/auth-context"
+import { createListingSchema, createClaimSchema } from "@/lib/validators"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -20,6 +21,8 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ITEM_CATEGORIES, CAMPUS_LOCATIONS, type ListingType } from "@/lib/types"
 import { Package, Search, Upload, X, MapPin, Calendar, FileText } from "lucide-react"
+import { toast } from "sonner"
+import { ZodError } from "zod"
 
 function ReportPageContent() {
   const router = useRouter()
@@ -29,6 +32,7 @@ function ReportPageContent() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [photos, setPhotos] = useState<File[]>([])
   const [previewUrls, setPreviewUrls] = useState<string[]>([])
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
 
   const [formData, setFormData] = useState({
     title: "",
@@ -51,10 +55,15 @@ function ReportPageContent() {
   const handleInputChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
   ) => {
+    const { name } = e.target
     setFormData((prev) => ({
       ...prev,
-      [e.target.name]: e.target.value,
+      [name]: e.target.value,
     }))
+    // Clear error for this field when user starts typing
+    if (fieldErrors[name]) {
+      setFieldErrors((prev) => ({ ...prev, [name]: "" }))
+    }
   }
 
   const handleSelectChange = (name: string, value: string) => {
@@ -62,12 +71,16 @@ function ReportPageContent() {
       ...prev,
       [name]: value,
     }))
+    // Clear error for this field when user selects
+    if (fieldErrors[name]) {
+      setFieldErrors((prev) => ({ ...prev, [name]: "" }))
+    }
   }
 
   const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || [])
     if (files.length + photos.length > 5) {
-      alert("Maximum 5 photos allowed")
+      toast.error("Maximum 5 photos allowed")
       return
     }
 
@@ -90,30 +103,48 @@ function ReportPageContent() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsSubmitting(true)
+    setFieldErrors({})
 
-    // Validate required fields
-    if (!formData.title || !formData.description || !formData.category || !formData.location) {
-      alert("Please fill in all required fields")
-      setIsSubmitting(false)
-      return
-    }
+    try {
+      // For found items, require at least one photo
+      const dataToValidate = {
+        ...formData,
+        type: activeTab,
+      }
 
-    // For found items, photos are strongly recommended
-    if (activeTab === "found" && photos.length === 0) {
-      const confirm = window.confirm(
-        "Photos are highly recommended for found items. Continue without photos?"
-      )
-      if (!confirm) {
+      // Validate using Zod schema
+      const validatedData = createListingSchema.parse(dataToValidate)
+
+      // Additional check for found items photos
+      if (activeTab === "found" && photos.length === 0) {
+        toast.error("Found items must include at least one photo")
         setIsSubmitting(false)
         return
       }
+
+      // Simulate API call
+      await new Promise((resolve) => setTimeout(resolve, 1500))
+
+      // Success
+      const itemType = activeTab === "lost" ? "Lost" : "Found"
+      toast.success(`${itemType} item reported successfully!`)
+      router.push("/listings?success=true&type=" + activeTab)
+    } catch (error) {
+      if (error instanceof ZodError) {
+        // Extract field errors from Zod validation
+        const errors: Record<string, string> = {}
+        error.errors.forEach((err) => {
+          const path = err.path[0] as string
+          errors[path] = err.message
+        })
+        setFieldErrors(errors)
+        toast.error("Please fix the errors in the form")
+      } else {
+        toast.error("Failed to submit report. Please try again.")
+      }
+    } finally {
+      setIsSubmitting(false)
     }
-
-    // Simulate API call
-    await new Promise((resolve) => setTimeout(resolve, 1500))
-
-    // Success - redirect to listings
-    router.push("/listings?success=true&type=" + activeTab)
   }
 
   const canRegisterFound = user?.role === "staff" || user?.role === "admin"
@@ -164,6 +195,7 @@ function ReportPageContent() {
                   onInputChange={handleInputChange}
                   onSelectChange={handleSelectChange}
                   type="lost"
+                  fieldErrors={fieldErrors}
                 />
 
                 {/* Photo Upload (Optional for lost) */}
@@ -216,6 +248,7 @@ function ReportPageContent() {
                   onInputChange={handleInputChange}
                   onSelectChange={handleSelectChange}
                   type="found"
+                  fieldErrors={fieldErrors}
                 />
 
                 {/* Storage Location (Required for found items) */}
@@ -304,9 +337,10 @@ interface ItemFormFieldsProps {
   onInputChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => void
   onSelectChange: (name: string, value: string) => void
   type: ListingType
+  fieldErrors: Record<string, string>
 }
 
-function ItemFormFields({ formData, onInputChange, onSelectChange, type }: ItemFormFieldsProps) {
+function ItemFormFields({ formData, onInputChange, onSelectChange, type, fieldErrors }: ItemFormFieldsProps) {
   return (
     <>
       {/* Title */}
@@ -319,7 +353,11 @@ function ItemFormFields({ formData, onInputChange, onSelectChange, type }: ItemF
           value={formData.title}
           onChange={onInputChange}
           required
+          aria-invalid={!!fieldErrors.title}
         />
+        {fieldErrors.title && (
+          <p className="text-sm text-destructive">{fieldErrors.title}</p>
+        )}
       </div>
 
       {/* Category and Location Row */}
@@ -330,7 +368,7 @@ function ItemFormFields({ formData, onInputChange, onSelectChange, type }: ItemF
             value={formData.category}
             onValueChange={(v) => onSelectChange("category", v)}
           >
-            <SelectTrigger>
+            <SelectTrigger aria-invalid={!!fieldErrors.category}>
               <SelectValue placeholder="Select category" />
             </SelectTrigger>
             <SelectContent>
@@ -341,6 +379,9 @@ function ItemFormFields({ formData, onInputChange, onSelectChange, type }: ItemF
               ))}
             </SelectContent>
           </Select>
+          {fieldErrors.category && (
+            <p className="text-sm text-destructive">{fieldErrors.category}</p>
+          )}
         </div>
 
         <div className="space-y-2">
@@ -351,7 +392,7 @@ function ItemFormFields({ formData, onInputChange, onSelectChange, type }: ItemF
             value={formData.location}
             onValueChange={(v) => onSelectChange("location", v)}
           >
-            <SelectTrigger>
+            <SelectTrigger aria-invalid={!!fieldErrors.location}>
               <SelectValue placeholder="Select location" />
             </SelectTrigger>
             <SelectContent>
@@ -362,6 +403,9 @@ function ItemFormFields({ formData, onInputChange, onSelectChange, type }: ItemF
               ))}
             </SelectContent>
           </Select>
+          {fieldErrors.location && (
+            <p className="text-sm text-destructive">{fieldErrors.location}</p>
+          )}
         </div>
       </div>
 
@@ -390,7 +434,11 @@ function ItemFormFields({ formData, onInputChange, onSelectChange, type }: ItemF
             value={formData.date_occurred}
             onChange={onInputChange}
             required
+            aria-invalid={!!fieldErrors.date_occurred}
           />
+          {fieldErrors.date_occurred && (
+            <p className="text-sm text-destructive">{fieldErrors.date_occurred}</p>
+          )}
         </div>
       </div>
 
@@ -412,7 +460,11 @@ function ItemFormFields({ formData, onInputChange, onSelectChange, type }: ItemF
           onChange={onInputChange}
           rows={4}
           required
+          aria-invalid={!!fieldErrors.description}
         />
+        {fieldErrors.description && (
+          <p className="text-sm text-destructive">{fieldErrors.description}</p>
+        )}
       </div>
     </>
   )

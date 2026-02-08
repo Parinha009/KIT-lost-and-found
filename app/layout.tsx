@@ -11,7 +11,6 @@ const _geistMono = Geist_Mono({ subsets: ["latin"] });
 export const metadata: Metadata = {
   title: 'KIT Lost & Found',
   description: 'Campus lost and found system for Kirirom Institute of Technology',
-  generator: 'v0.app',
   icons: {
     icon: [
       {

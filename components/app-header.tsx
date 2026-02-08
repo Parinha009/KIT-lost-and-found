@@ -22,6 +22,7 @@ import {
   LayoutDashboard,
   FileSearch,
   FilePlus,
+  MessageSquare,
   Settings,
   LogOut,
   Shield,
@@ -34,6 +35,7 @@ const navigation = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { name: "Browse Items", href: "/listings", icon: FileSearch },
   { name: "Report Item", href: "/report", icon: FilePlus },
+  { name: "Messages", href: "/messages", icon: MessageSquare },
 ]
 
 export function AppHeader() {

@@ -197,7 +197,14 @@ export default function RegisterPage() {
         </Card>
 
         <p className="mt-4 text-center text-xs text-muted-foreground">
-          By creating an account, you agree to our Terms of Service and Privacy Policy
+          By creating an account, you agree to our{" "}
+          <Link href="/terms" className="text-primary underline underline-offset-2">
+            Terms of Service
+          </Link>{" "}
+          and{" "}
+          <Link href="/privacy" className="text-primary underline underline-offset-2">
+            Privacy Policy
+          </Link>
         </p>
       </div>
     </div>
