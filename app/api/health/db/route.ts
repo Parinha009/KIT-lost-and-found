@@ -3,6 +3,29 @@ import { sql } from "drizzle-orm"
 import { checkDatabaseConnection, hasDatabaseConfig } from "@/lib/db"
 import { getDbOrNull } from "@/lib/db"
 
+export const dynamic = "force-dynamic"
+
+const NO_STORE_HEADERS = {
+  "cache-control": "no-store, max-age=0",
+} as const
+
+const REQUIRED_TABLES = ["users", "listings", "photos", "claims", "notifications"] as const
+
+function rowsFromExecuteResult(value: unknown): Array<Record<string, unknown>> {
+  if (Array.isArray(value)) return value as Array<Record<string, unknown>>
+
+  if (
+    value &&
+    typeof value === "object" &&
+    "rows" in value &&
+    Array.isArray((value as { rows?: unknown }).rows)
+  ) {
+    return (value as { rows: Array<Record<string, unknown>> }).rows
+  }
+
+  return []
+}
+
 export async function GET() {
   const configured = hasDatabaseConfig()
   if (!configured) {
@@ -13,7 +36,7 @@ export async function GET() {
         provider: "supabase-postgres",
         orm: "drizzle",
       },
-      { status: 503 }
+      { status: 503, headers: NO_STORE_HEADERS }
     )
   }
 
@@ -27,7 +50,7 @@ export async function GET() {
         provider: "supabase-postgres",
         orm: "drizzle",
       },
-      { status: 503 }
+      { status: 503, headers: NO_STORE_HEADERS }
     )
   }
 
@@ -41,25 +64,26 @@ export async function GET() {
         provider: "supabase-postgres",
         orm: "drizzle",
       },
-      { status: 503 }
+      { status: 503, headers: NO_STORE_HEADERS }
     )
   }
 
   // If tables aren't created yet, treat DB as "not ready" so the UI safely uses local fallback.
   try {
     const result = await db.execute(sql`
-      select
-        to_regclass('public.users') is not null as users,
-        to_regclass('public.listings') is not null as listings,
-        to_regclass('public.photos') is not null as photos,
-        to_regclass('public.claims') is not null as claims,
-        to_regclass('public.notifications') is not null as notifications
+      select table_name
+      from information_schema.tables
+      where table_schema = 'public'
+        and table_name in ('users', 'listings', 'photos', 'claims', 'notifications')
     `)
 
-    const row = Array.isArray(result) ? (result[0] as Record<string, unknown> | undefined) : undefined
-    const missingTables = Object.entries(row ?? {})
-      .filter(([, value]) => value !== true)
-      .map(([key]) => key)
+    const rows = rowsFromExecuteResult(result)
+    const present = new Set(
+      rows
+        .map((row) => row.table_name)
+        .filter((name): name is string => typeof name === "string")
+    )
+    const missingTables = REQUIRED_TABLES.filter((name) => !present.has(name))
 
     if (missingTables.length > 0) {
       return NextResponse.json(
@@ -72,7 +96,7 @@ export async function GET() {
           provider: "supabase-postgres",
           orm: "drizzle",
         },
-        { status: 503 }
+        { status: 503, headers: NO_STORE_HEADERS }
       )
     }
   } catch {
@@ -85,7 +109,7 @@ export async function GET() {
         provider: "supabase-postgres",
         orm: "drizzle",
       },
-      { status: 503 }
+      { status: 503, headers: NO_STORE_HEADERS }
     )
   }
 
@@ -96,5 +120,5 @@ export async function GET() {
     schemaReady: true,
     provider: "supabase-postgres",
     orm: "drizzle",
-  })
+  }, { headers: NO_STORE_HEADERS })
 }
