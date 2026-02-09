@@ -17,7 +17,7 @@ export function ListingCard({ listing }: ListingCardProps) {
   const hasPhoto = listing.photos && listing.photos.length > 0
 
   return (
-    <Card className="h-full overflow-hidden py-0 gap-0 transition-shadow hover:shadow-md">
+    <Card className="group h-full overflow-hidden gap-0 py-0 transition-all duration-200 ease-out motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-2 motion-safe:duration-300 motion-safe:hover:-translate-y-1 motion-safe:hover:shadow-lg">
       {/* Image */}
       <div className="relative h-[220px] w-full overflow-hidden bg-muted">
         {hasPhoto ? (
@@ -26,7 +26,7 @@ export function ListingCard({ listing }: ListingCardProps) {
             alt={listing.title}
             fill
             sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
-            className="object-cover object-center"
+            className="object-cover object-center transition-transform duration-500 ease-out motion-safe:group-hover:scale-105"
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center">

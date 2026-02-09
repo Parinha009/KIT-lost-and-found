@@ -26,12 +26,12 @@ export function MessageComposer({
   }
 
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex items-center gap-2 motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-2 motion-safe:duration-300">
       <Button
         type="button"
         variant="ghost"
         size="icon"
-        className="h-9 w-9 shrink-0 text-muted-foreground"
+        className="h-9 w-9 shrink-0 text-muted-foreground transition-all duration-200 motion-safe:hover:scale-105"
         disabled={disabled}
         aria-label="Attach image"
       >
@@ -42,13 +42,13 @@ export function MessageComposer({
         onChange={(event) => onChange(event.target.value)}
         onKeyDown={handleKeyDown}
         placeholder="Type your message..."
-        className="h-10"
+        className="h-10 transition-shadow duration-200 focus-visible:shadow-sm"
         disabled={disabled}
       />
       <Button
         type="button"
         size="icon"
-        className="h-10 w-10 shrink-0 bg-primary/75 hover:bg-primary"
+        className="h-10 w-10 shrink-0 bg-primary/75 transition-all duration-200 hover:bg-primary motion-safe:hover:scale-105"
         onClick={onSend}
         disabled={disabled || !value.trim()}
         aria-label="Send message"

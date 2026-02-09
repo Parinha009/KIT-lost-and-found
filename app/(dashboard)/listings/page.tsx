@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo, Suspense } from "react"
+import { useState, useMemo, Suspense, useEffect, useCallback } from "react"
 import { useSearchParams } from "next/navigation"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
@@ -14,7 +14,11 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
 import { ListingCard } from "@/components/listing-card"
-import { getLostFoundWebService } from "@/lib/services/lost-found-service"
+import {
+  getLostFoundWebService,
+  LOST_FOUND_LISTINGS_UPDATED_EVENT,
+} from "@/lib/services/lost-found-service"
+import type { Listing } from "@/lib/types"
 import { ITEM_CATEGORIES, CAMPUS_LOCATIONS } from "@/lib/types"
 import { Search, Filter, X, Package } from "lucide-react"
 
@@ -23,6 +27,7 @@ const lostFoundService = getLostFoundWebService()
 function ListingsPageContent() {
   const searchParams = useSearchParams()
   const successMessage = searchParams.get("success")
+  const createdListingId = searchParams.get("created")
   const defaultStatusFilter = "all"
 
   const [search, setSearch] = useState("")
@@ -31,7 +36,25 @@ function ListingsPageContent() {
   const [locationFilter, setLocationFilter] = useState<string>("all")
   const [statusFilter, setStatusFilter] = useState<string>(defaultStatusFilter)
   const [showFilters, setShowFilters] = useState(false)
-  const allListings = useMemo(() => lostFoundService.getListings(), [successMessage])
+  const [allListings, setAllListings] = useState<Listing[]>([])
+
+  const refreshListings = useCallback(() => {
+    setAllListings(lostFoundService.getListings())
+  }, [])
+
+  useEffect(() => {
+    refreshListings()
+  }, [refreshListings, successMessage, createdListingId])
+
+  useEffect(() => {
+    window.addEventListener(LOST_FOUND_LISTINGS_UPDATED_EVENT, refreshListings)
+    window.addEventListener("storage", refreshListings)
+
+    return () => {
+      window.removeEventListener(LOST_FOUND_LISTINGS_UPDATED_EVENT, refreshListings)
+      window.removeEventListener("storage", refreshListings)
+    }
+  }, [refreshListings])
 
   const filteredListings = useMemo(() => {
     return allListings.filter((listing) => {

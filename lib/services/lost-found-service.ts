@@ -9,6 +9,8 @@ import type {
 } from "@/lib/items"
 import type { Claim, Listing, ListingFilters, Notification } from "@/lib/types"
 
+export const LOST_FOUND_LISTINGS_UPDATED_EVENT = items.LISTINGS_UPDATED_EVENT
+
 export interface LostFoundWebService {
   getListings(filters?: ListingFilters): Listing[]
   getListing(id: string): Listing | undefined
@@ -118,4 +120,3 @@ const localLostFoundWebService = new LocalLostFoundWebService()
 export function getLostFoundWebService(): LostFoundWebService {
   return localLostFoundWebService
 }
-

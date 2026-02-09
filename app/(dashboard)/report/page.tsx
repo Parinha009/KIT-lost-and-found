@@ -136,7 +136,7 @@ function ReportPageContent() {
       }
 
       const uploadedPhotoUrls = await uploadListingImages(photos)
-      lostFoundService.createListing({
+      const createdListing = lostFoundService.createListing({
         ...validatedData,
         category: validatedData.category as ItemCategory,
         location: validatedData.location as CampusLocation,
@@ -146,7 +146,7 @@ function ReportPageContent() {
 
       const itemType = activeTab === "lost" ? "Lost" : "Found"
       toast.success(`${itemType} item reported successfully!`)
-      router.push("/listings?success=true&type=" + activeTab)
+      router.push(`/listings?success=true&type=${activeTab}&created=${createdListing.id}`)
     } catch (error) {
       if (error instanceof ZodError) {
         // Extract field errors from Zod validation

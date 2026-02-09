@@ -80,12 +80,12 @@ export function AppHeader() {
   }
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b border-border bg-card">
+    <header className="sticky top-0 z-50 w-full border-b border-border bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/80">
       <div className="container mx-auto px-4">
         <div className="flex h-16 items-center justify-between">
           {/* Logo */}
-          <Link href="/dashboard" className="flex items-center gap-2">
-            <div className="flex items-center justify-center w-8 h-8 bg-primary rounded-lg">
+          <Link href="/dashboard" className="group flex items-center gap-2">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary transition-transform duration-200 motion-safe:group-hover:scale-105">
               <Search className="w-4 h-4 text-primary-foreground" />
             </div>
             <span className="text-lg font-bold text-foreground hidden sm:inline">
@@ -102,10 +102,10 @@ export function AppHeader() {
                   key={item.name}
                   href={item.href}
                   className={cn(
-                    "flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-md transition-colors",
+                    "flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-all duration-200",
                     isActive
                       ? "bg-primary/10 text-primary"
-                      : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                      : "text-muted-foreground hover:bg-muted hover:text-foreground motion-safe:hover:-translate-y-0.5"
                   )}
                 >
                   <item.icon className="w-4 h-4" />
@@ -117,10 +117,10 @@ export function AppHeader() {
               <Link
                 href="/admin"
                 className={cn(
-                  "flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-md transition-colors",
+                  "flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-all duration-200",
                   pathname.startsWith("/admin")
                     ? "bg-primary/10 text-primary"
-                    : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                    : "text-muted-foreground hover:bg-muted hover:text-foreground motion-safe:hover:-translate-y-0.5"
                 )}
               >
                 <Shield className="w-4 h-4" />
@@ -133,12 +133,16 @@ export function AppHeader() {
           <div className="flex items-center gap-2">
             {/* Notifications */}
             <Link href="/notifications">
-              <Button variant="ghost" size="icon" className="relative">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="relative transition-transform duration-200 motion-safe:hover:scale-105"
+              >
                 <Bell className="h-5 w-5" />
                 {unreadCount > 0 && (
                   <Badge
                     variant="destructive"
-                    className="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center p-0 text-xs"
+                    className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center p-0 text-xs motion-safe:animate-in motion-safe:zoom-in-50 motion-safe:duration-200"
                   >
                     {unreadCount}
                   </Badge>
@@ -219,10 +223,10 @@ export function AppHeader() {
                     href={item.href}
                     onClick={() => setMobileMenuOpen(false)}
                     className={cn(
-                      "flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-md transition-colors",
+                      "flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-all duration-200",
                       isActive
                         ? "bg-primary/10 text-primary"
-                        : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                        : "text-muted-foreground hover:bg-muted hover:text-foreground"
                     )}
                   >
                     <item.icon className="w-4 h-4" />

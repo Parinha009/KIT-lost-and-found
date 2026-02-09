@@ -12,6 +12,7 @@ import type {
   NotificationType,
 } from "./types"
 
+export const LISTINGS_UPDATED_EVENT = "kit-lf-listings-updated"
 const LISTINGS_STORAGE_KEY = "kit-lf-listings"
 const CLAIMS_STORAGE_KEY = "kit-lf-claims"
 const NOTIFICATIONS_STORAGE_KEY = "kit-lf-notifications"
@@ -168,6 +169,7 @@ function readStoredListings(): Listing[] | null {
 function writeStoredListings(listings: Listing[]): void {
   if (!canUseStorage()) return
   window.localStorage.setItem(LISTINGS_STORAGE_KEY, JSON.stringify(listings))
+  emitEvent(LISTINGS_UPDATED_EVENT)
 }
 
 function getListingsSource(): Listing[] {

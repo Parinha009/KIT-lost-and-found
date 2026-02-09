@@ -35,8 +35,8 @@ export function ConversationList({
             type="button"
             onClick={() => onSelectConversation(conversation.id)}
             className={cn(
-              "w-full border-b border-border px-4 py-3 text-left transition-colors",
-              "hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              "w-full border-b border-border px-4 py-3 text-left transition-all duration-200 motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-left-2 motion-safe:duration-300",
+              "hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring motion-safe:hover:translate-x-0.5",
               isActive && "bg-muted"
             )}
           >
@@ -49,7 +49,10 @@ export function ConversationList({
                   </p>
                   <div className="flex items-center gap-2">
                     {conversation.unreadCount > 0 && (
-                      <Badge variant="destructive" className="h-4 min-w-4 px-1 text-[10px]">
+                      <Badge
+                        variant="destructive"
+                        className="h-4 min-w-4 px-1 text-[10px] motion-safe:animate-in motion-safe:zoom-in-50 motion-safe:duration-200"
+                      >
                         {conversation.unreadCount}
                       </Badge>
                     )}

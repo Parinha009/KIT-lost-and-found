@@ -20,7 +20,7 @@ export function ChatThread({ conversation, messages }: ChatThreadProps) {
   }
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full flex-col motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-right-2 motion-safe:duration-300">
       <div className="flex items-center justify-between border-b border-border px-4 py-3">
         <div className="flex min-w-0 items-center gap-3">
           <span className="h-8 w-8 shrink-0 rounded-full bg-muted-foreground/20" />
@@ -51,17 +51,20 @@ export function ChatThread({ conversation, messages }: ChatThreadProps) {
             return (
               <div
                 key={message.id}
-                className={cn("flex", isMine ? "justify-end" : "justify-start")}
+                className={cn(
+                  "flex motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-2 motion-safe:duration-200",
+                  isMine ? "justify-end" : "justify-start"
+                )}
               >
                 {!isMine && (
                   <span className="mr-2 mt-1 h-6 w-6 shrink-0 rounded-full bg-muted-foreground/20" />
                 )}
                 <div
                   className={cn(
-                    "max-w-[76%] rounded-xl px-3.5 py-2.5 text-sm leading-5",
+                    "max-w-[76%] rounded-xl px-3.5 py-2.5 text-sm leading-5 transition-shadow duration-200",
                     isMine
                       ? "rounded-br-sm bg-primary text-primary-foreground"
-                      : "rounded-bl-sm border border-border bg-background text-card-foreground"
+                      : "rounded-bl-sm border border-border bg-background text-card-foreground hover:shadow-sm"
                   )}
                   title={formatDateTime(message.createdAt)}
                 >
@@ -84,4 +87,3 @@ export function ChatThread({ conversation, messages }: ChatThreadProps) {
     </div>
   )
 }
-

@@ -104,7 +104,7 @@ export default function MessagesPage() {
   }
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-5 motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-2 motion-safe:duration-300">
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
           <h1 className="text-4xl font-bold tracking-tight text-foreground">Messages</h1>
@@ -118,7 +118,7 @@ export default function MessagesPage() {
       </div>
 
       <div className="grid gap-4 xl:grid-cols-[360px_1fr]">
-        <Card className="h-[420px] gap-0 overflow-hidden rounded-2xl py-0 md:h-[560px]">
+        <Card className="h-[420px] gap-0 overflow-hidden rounded-2xl py-0 transition-shadow duration-200 motion-safe:hover:shadow-md md:h-[560px]">
           <div className="border-b border-border p-4">
             <div className="relative">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -137,7 +137,7 @@ export default function MessagesPage() {
           />
         </Card>
 
-        <Card className="h-[560px] gap-0 overflow-hidden rounded-2xl py-0">
+        <Card className="h-[560px] gap-0 overflow-hidden rounded-2xl py-0 transition-shadow duration-200 motion-safe:hover:shadow-md">
           <ChatThread conversation={activeConversation} messages={threadMessages} />
           <div className="border-t border-border p-4">
             {activeConversation ? (

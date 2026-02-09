@@ -2,7 +2,7 @@
 
 import React from "react"
 
-import { useMemo } from "react"
+import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { useAuth } from "@/lib/auth-context"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -10,19 +10,37 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ListingCard } from "@/components/listing-card"
-import { getLostFoundWebService } from "@/lib/services/lost-found-service"
+import {
+  getLostFoundWebService,
+  LOST_FOUND_LISTINGS_UPDATED_EVENT,
+} from "@/lib/services/lost-found-service"
+import type { Listing } from "@/lib/types"
 import { Plus, Package, Search, FileText } from "lucide-react"
 
 const lostFoundService = getLostFoundWebService()
 
 export default function MyListingsPage() {
   const { user } = useAuth()
+  const [allListings, setAllListings] = useState<Listing[]>([])
+
+  useEffect(() => {
+    const refreshListings = () => {
+      setAllListings(lostFoundService.getListings())
+    }
+
+    refreshListings()
+    window.addEventListener(LOST_FOUND_LISTINGS_UPDATED_EVENT, refreshListings)
+    window.addEventListener("storage", refreshListings)
+
+    return () => {
+      window.removeEventListener(LOST_FOUND_LISTINGS_UPDATED_EVENT, refreshListings)
+      window.removeEventListener("storage", refreshListings)
+    }
+  }, [])
 
   const myListings = useMemo(() => {
-    return lostFoundService
-      .getListings()
-      .filter((listing) => listing.user_id === user?.id)
-  }, [user?.id])
+    return allListings.filter((listing) => listing.user_id === user?.id)
+  }, [allListings, user?.id])
 
   const lostListings = myListings.filter((l) => l.type === "lost")
   const foundListings = myListings.filter((l) => l.type === "found")
