@@ -26,9 +26,18 @@ function isConfigured() {
 
 function createDatabase() {
   const sqlClient = postgres(DATABASE_URL, {
-    max: 1,
+    // Keep the pool small for Supabase, but >1 so a single slow query doesn't stall the whole app.
+    max: 3,
     prepare: false,
     ssl: "require",
+    connect_timeout: 15,
+    idle_timeout: 20,
+    keep_alive: 60,
+    max_lifetime: 60 * 30, // rotate connections every 30 minutes
+    connection: {
+      application_name: "kit-lost-and-found",
+      statement_timeout: 15_000,
+    },
   })
 
   return {
