@@ -6,14 +6,8 @@ import { useRouter } from "next/navigation"
 import { useAuth } from "@/lib/auth-context"
 import { createClaimSchema } from "@/lib/validators"
 import {
-  createClaim,
-  createNotification,
-  deleteListing,
-  evaluateClaimMatch,
-  getListing,
-  getListingClaims,
-  updateListing,
-} from "@/lib/items"
+  getLostFoundWebService,
+} from "@/lib/services/lost-found-service"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -50,6 +44,8 @@ interface ListingDetailPageProps {
   params: Promise<{ id: string }>
 }
 
+const lostFoundService = getLostFoundWebService()
+
 export default function ListingDetailPage({ params }: ListingDetailPageProps) {
   const resolvedParams = use(params)
   const router = useRouter()
@@ -68,11 +64,11 @@ export default function ListingDetailPage({ params }: ListingDetailPageProps) {
   const [isDeleting, setIsDeleting] = useState(false)
 
   const listing = useMemo(
-    () => getListing(resolvedParams.id),
+    () => lostFoundService.getListing(resolvedParams.id),
     [resolvedParams.id, refreshKey]
   )
   const claims = useMemo(
-    () => (listing ? getListingClaims(listing.id) : []),
+    () => (listing ? lostFoundService.getListingClaims(listing.id) : []),
     [listing]
   )
 
@@ -126,7 +122,7 @@ export default function ListingDetailPage({ params }: ListingDetailPageProps) {
         proof_description: claimProof,
       })
 
-      const matchResult = evaluateClaimMatch(listing.id, user.id, claimProof)
+      const matchResult = lostFoundService.evaluateClaimMatch(listing.id, user.id, claimProof)
       if (!matchResult.isMatch) {
         toast.error(
           matchResult.reasons[0] || "Claim details do not align with this item."
@@ -135,7 +131,7 @@ export default function ListingDetailPage({ params }: ListingDetailPageProps) {
       }
 
       await new Promise((resolve) => setTimeout(resolve, 500))
-      const createdClaim = createClaim({
+      const createdClaim = lostFoundService.createClaim({
         listing_id: listing.id,
         claimant_id: user.id,
         proof_description: claimProof.trim(),
@@ -147,14 +143,14 @@ export default function ListingDetailPage({ params }: ListingDetailPageProps) {
       }
 
       const linkedLostListing = matchResult.linkedLostListingId
-        ? getListing(matchResult.linkedLostListingId)
+        ? lostFoundService.getListing(matchResult.linkedLostListingId)
         : undefined
 
       const linkedLostContext = linkedLostListing
         ? `Linked lost report: "${linkedLostListing.title}".`
         : "Claim details were matched directly against this found listing."
 
-      createNotification({
+      lostFoundService.createNotification({
         user_id: listing.user_id,
         type: "claim_submitted",
         title: `New claim for "${listing.title}"`,
@@ -188,7 +184,7 @@ export default function ListingDetailPage({ params }: ListingDetailPageProps) {
 
     setIsSavingEdit(true)
     try {
-      const updated = updateListing(listing.id, {
+      const updated = lostFoundService.updateListing(listing.id, {
         title,
         description,
         location_details: locationDetails || undefined,
@@ -209,7 +205,7 @@ export default function ListingDetailPage({ params }: ListingDetailPageProps) {
 
   const handleCloseListing = () => {
     if (!listing) return
-    const updated = updateListing(listing.id, { status: "closed" })
+    const updated = lostFoundService.updateListing(listing.id, { status: "closed" })
     if (!updated) {
       toast.error("Unable to close listing")
       return
@@ -224,7 +220,7 @@ export default function ListingDetailPage({ params }: ListingDetailPageProps) {
 
     setIsDeleting(true)
     try {
-      const deleted = deleteListing(listing.id)
+      const deleted = lostFoundService.deleteListing(listing.id)
       if (!deleted) {
         toast.error("Unable to delete listing")
         return

@@ -30,10 +30,8 @@ import {
   AlertTriangle,
 } from "lucide-react"
 import {
-  createNotification,
-  getAllClaims,
-  updateClaimStatus,
-} from "@/lib/items"
+  getLostFoundWebService,
+} from "@/lib/services/lost-found-service"
 import { formatDateTime, formatDistanceToNow } from "@/lib/date-utils"
 import type { Claim, ClaimStatus } from "@/lib/types"
 import { toast } from "sonner"
@@ -50,6 +48,8 @@ const statusIcons: Record<ClaimStatus, React.ReactNode> = {
   rejected: <XCircle className="w-4 h-4" />,
 }
 
+const lostFoundService = getLostFoundWebService()
+
 export default function ClaimsPage() {
   const { user } = useAuth()
   const [claims, setClaims] = useState<Claim[]>([])
@@ -61,7 +61,7 @@ export default function ClaimsPage() {
 
   useEffect(() => {
     const refreshClaims = () => {
-      setClaims(getAllClaims())
+      setClaims(lostFoundService.getAllClaims())
     }
 
     refreshClaims()
@@ -86,7 +86,7 @@ export default function ClaimsPage() {
     setIsProcessing(true)
     try {
       await new Promise((resolve) => setTimeout(resolve, 500))
-      const updatedClaim = updateClaimStatus(selectedClaim.id, {
+      const updatedClaim = lostFoundService.updateClaimStatus(selectedClaim.id, {
         status: "approved",
         reviewer_id: user.id,
         handover_at: new Date().toISOString(),
@@ -98,7 +98,7 @@ export default function ClaimsPage() {
         return
       }
 
-      createNotification({
+      lostFoundService.createNotification({
         user_id: updatedClaim.claimant_id,
         type: "claim_approved",
         title: `Claim approved for "${updatedClaim.listing?.title || "your item"}"`,
@@ -109,7 +109,7 @@ export default function ClaimsPage() {
         related_claim_id: updatedClaim.id,
       })
 
-      setClaims(getAllClaims())
+      setClaims(lostFoundService.getAllClaims())
       toast.success("Claim approved and claimant notified.")
       setActionDialog(null)
       setSelectedClaim(null)
@@ -124,7 +124,7 @@ export default function ClaimsPage() {
     setIsProcessing(true)
     try {
       await new Promise((resolve) => setTimeout(resolve, 500))
-      const updatedClaim = updateClaimStatus(selectedClaim.id, {
+      const updatedClaim = lostFoundService.updateClaimStatus(selectedClaim.id, {
         status: "rejected",
         reviewer_id: user.id,
         rejection_reason: rejectionReason.trim(),
@@ -135,7 +135,7 @@ export default function ClaimsPage() {
         return
       }
 
-      createNotification({
+      lostFoundService.createNotification({
         user_id: updatedClaim.claimant_id,
         type: "claim_rejected",
         title: `Claim rejected for "${updatedClaim.listing?.title || "your item"}"`,
@@ -146,7 +146,7 @@ export default function ClaimsPage() {
         related_claim_id: updatedClaim.id,
       })
 
-      setClaims(getAllClaims())
+      setClaims(lostFoundService.getAllClaims())
       toast.success("Claim rejected and claimant notified.")
       setActionDialog(null)
       setSelectedClaim(null)

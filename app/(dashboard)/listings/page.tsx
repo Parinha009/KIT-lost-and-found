@@ -14,9 +14,11 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
 import { ListingCard } from "@/components/listing-card"
-import { getListings } from "@/lib/items"
+import { getLostFoundWebService } from "@/lib/services/lost-found-service"
 import { ITEM_CATEGORIES, CAMPUS_LOCATIONS } from "@/lib/types"
 import { Search, Filter, X, Package } from "lucide-react"
+
+const lostFoundService = getLostFoundWebService()
 
 function ListingsPageContent() {
   const searchParams = useSearchParams()
@@ -29,7 +31,7 @@ function ListingsPageContent() {
   const [locationFilter, setLocationFilter] = useState<string>("all")
   const [statusFilter, setStatusFilter] = useState<string>(defaultStatusFilter)
   const [showFilters, setShowFilters] = useState(false)
-  const allListings = useMemo(() => getListings(), [successMessage])
+  const allListings = useMemo(() => lostFoundService.getListings(), [successMessage])
 
   const filteredListings = useMemo(() => {
     return allListings.filter((listing) => {

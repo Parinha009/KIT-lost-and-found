@@ -20,10 +20,8 @@ import {
   Inbox,
 } from "lucide-react"
 import {
-  getUserNotifications,
-  markAllNotificationsAsRead,
-  markNotificationAsRead,
-} from "@/lib/items"
+  getLostFoundWebService,
+} from "@/lib/services/lost-found-service"
 import { formatDistanceToNow } from "@/lib/date-utils"
 import type { Notification, NotificationType } from "@/lib/types"
 
@@ -43,6 +41,8 @@ const notificationColors: Record<NotificationType, string> = {
   system: "bg-muted text-muted-foreground",
 }
 
+const lostFoundService = getLostFoundWebService()
+
 export default function NotificationsPage() {
   const { user } = useAuth()
   const [notifications, setNotifications] = useState<Notification[]>([])
@@ -54,7 +54,7 @@ export default function NotificationsPage() {
     }
 
     const refreshNotifications = () => {
-      setNotifications(getUserNotifications(user.id))
+      setNotifications(lostFoundService.getUserNotifications(user.id))
     }
 
     refreshNotifications()
@@ -72,17 +72,17 @@ export default function NotificationsPage() {
 
   const markAsRead = (id: string) => {
     if (!user) return
-    const updated = markNotificationAsRead(id)
+    const updated = lostFoundService.markNotificationAsRead(id)
     if (updated) {
-      setNotifications(getUserNotifications(user.id))
+      setNotifications(lostFoundService.getUserNotifications(user.id))
     }
   }
 
   const markAllAsRead = () => {
     if (!user) return
-    const updatedCount = markAllNotificationsAsRead(user.id)
+    const updatedCount = lostFoundService.markAllNotificationsAsRead(user.id)
     if (updatedCount > 0) {
-      setNotifications(getUserNotifications(user.id))
+      setNotifications(lostFoundService.getUserNotifications(user.id))
     }
   }
 

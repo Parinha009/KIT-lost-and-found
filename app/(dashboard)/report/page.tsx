@@ -6,7 +6,7 @@ import { useState, useEffect, Suspense } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useAuth } from "@/lib/auth-context"
 import { createListingSchema } from "@/lib/validators"
-import { createListing } from "@/lib/items"
+import { getLostFoundWebService } from "@/lib/services/lost-found-service"
 import { uploadListingImages } from "@/lib/upload-adapter"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -31,6 +31,8 @@ import {
 import { Package, Search, Upload, X, MapPin, Calendar, FileText } from "lucide-react"
 import { toast } from "sonner"
 import { ZodError } from "zod"
+
+const lostFoundService = getLostFoundWebService()
 
 function ReportPageContent() {
   const router = useRouter()
@@ -134,7 +136,7 @@ function ReportPageContent() {
       }
 
       const uploadedPhotoUrls = await uploadListingImages(photos)
-      createListing({
+      lostFoundService.createListing({
         ...validatedData,
         category: validatedData.category as ItemCategory,
         location: validatedData.location as CampusLocation,

@@ -28,7 +28,7 @@ import {
   Shield,
 } from "lucide-react"
 import { useEffect, useState } from "react"
-import { getUnreadNotificationCount } from "@/lib/items"
+import { getLostFoundWebService } from "@/lib/services/lost-found-service"
 import { cn } from "@/lib/utils"
 
 const navigation = [
@@ -37,6 +37,8 @@ const navigation = [
   { name: "Report Item", href: "/report", icon: FilePlus },
   { name: "Messages", href: "/messages", icon: MessageSquare },
 ]
+
+const lostFoundService = getLostFoundWebService()
 
 export function AppHeader() {
   const pathname = usePathname()
@@ -52,7 +54,7 @@ export function AppHeader() {
     }
 
     const refreshUnreadCount = () => {
-      setUnreadCount(getUnreadNotificationCount(user.id))
+      setUnreadCount(lostFoundService.getUnreadNotificationCount(user.id))
     }
 
     refreshUnreadCount()
