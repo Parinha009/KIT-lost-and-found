@@ -8,6 +8,7 @@ import { useAuth } from "@/lib/auth-context"
 import { createListingSchema } from "@/lib/validators"
 import { getLostFoundWebService } from "@/lib/services/lost-found-service"
 import { uploadListingImages } from "@/lib/upload-adapter"
+import type { Listing } from "@/lib/types"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -40,6 +41,7 @@ function ReportPageContent() {
   const { user } = useAuth()
   const [activeTab, setActiveTab] = useState<ListingType>("lost")
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isDbReady, setIsDbReady] = useState(false)
   const [photos, setPhotos] = useState<File[]>([])
   const [previewUrls, setPreviewUrls] = useState<string[]>([])
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
@@ -61,6 +63,24 @@ function ReportPageContent() {
       setActiveTab(type)
     }
   }, [searchParams])
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function checkDb() {
+      try {
+        const res = await fetch("/api/health/db", { cache: "no-store" })
+        if (!cancelled) setIsDbReady(res.ok)
+      } catch {
+        if (!cancelled) setIsDbReady(false)
+      }
+    }
+
+    checkDb()
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const handleInputChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
@@ -129,6 +149,16 @@ function ReportPageContent() {
         return
       }
 
+      if (activeTab === "found" && !validatedData.storage_location?.trim()) {
+        setFieldErrors((prev) => ({
+          ...prev,
+          storage_location: "Storage location is required for found items",
+        }))
+        toast.error("Storage location is required for found items")
+        setIsSubmitting(false)
+        return
+      }
+
       if (!user) {
         toast.error("You must be logged in to create a listing")
         setIsSubmitting(false)
@@ -136,13 +166,45 @@ function ReportPageContent() {
       }
 
       const uploadedPhotoUrls = await uploadListingImages(photos)
-      const createdListing = lostFoundService.createListing({
-        ...validatedData,
-        category: validatedData.category as ItemCategory,
-        location: validatedData.location as CampusLocation,
-        user_id: user.id,
-        photoUrls: uploadedPhotoUrls,
-      })
+
+      let createdListing: Listing
+
+      if (isDbReady) {
+        const res = await fetch("/api/listings", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            ...validatedData,
+            category: validatedData.category as ItemCategory,
+            location: validatedData.location as CampusLocation,
+            user_id: user.id,
+            user: {
+              id: user.id,
+              email: user.email,
+              name: user.name,
+              role: user.role,
+              phone: user.phone,
+              avatar_url: user.avatar_url,
+            },
+            photoUrls: uploadedPhotoUrls,
+          }),
+        })
+
+        const json = (await res.json()) as { ok?: boolean; data?: Listing; error?: string }
+        if (!res.ok || !json.ok || !json.data) {
+          throw new Error(json.error || "Failed to create listing")
+        }
+
+        createdListing = json.data
+      } else {
+        createdListing = lostFoundService.createListing({
+          ...validatedData,
+          category: validatedData.category as ItemCategory,
+          location: validatedData.location as CampusLocation,
+          user_id: user.id,
+          photoUrls: uploadedPhotoUrls,
+        })
+      }
 
       const itemType = activeTab === "lost" ? "Lost" : "Found"
       toast.success(`${itemType} item reported successfully!`)
@@ -282,7 +344,7 @@ function ReportPageContent() {
                         value={formData.storage_location}
                         onValueChange={(v) => handleSelectChange("storage_location", v)}
                       >
-                        <SelectTrigger>
+                        <SelectTrigger aria-invalid={!!fieldErrors.storage_location}>
                           <SelectValue placeholder="Select storage location" />
                         </SelectTrigger>
                         <SelectContent>
@@ -292,6 +354,9 @@ function ReportPageContent() {
                           <SelectItem value="Student Center">Student Center</SelectItem>
                         </SelectContent>
                       </Select>
+                      {fieldErrors.storage_location && (
+                        <p className="text-sm text-destructive">{fieldErrors.storage_location}</p>
+                      )}
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="storage_details">Storage Details</Label>

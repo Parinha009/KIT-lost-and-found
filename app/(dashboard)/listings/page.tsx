@@ -30,6 +30,7 @@ function ListingsPageContent() {
   const createdListingId = searchParams.get("created")
   const defaultStatusFilter = "all"
 
+  const [isDbReady, setIsDbReady] = useState(false)
   const [search, setSearch] = useState("")
   const [typeFilter, setTypeFilter] = useState<string>("all")
   const [categoryFilter, setCategoryFilter] = useState<string>("all")
@@ -38,23 +39,58 @@ function ListingsPageContent() {
   const [showFilters, setShowFilters] = useState(false)
   const [allListings, setAllListings] = useState<Listing[]>([])
 
-  const refreshListings = useCallback(() => {
-    setAllListings(lostFoundService.getListings())
+  useEffect(() => {
+    let cancelled = false
+
+    async function checkDb() {
+      try {
+        const res = await fetch("/api/health/db", { cache: "no-store" })
+        if (!cancelled) setIsDbReady(res.ok)
+      } catch {
+        if (!cancelled) setIsDbReady(false)
+      }
+    }
+
+    checkDb()
+    return () => {
+      cancelled = true
+    }
   }, [])
+
+  const refreshListings = useCallback(async () => {
+    if (!isDbReady) {
+      setAllListings(lostFoundService.getListings())
+      return
+    }
+
+    try {
+      const res = await fetch("/api/listings", { cache: "no-store" })
+      const json = (await res.json()) as { data?: Listing[] }
+      setAllListings(Array.isArray(json.data) ? json.data : [])
+    } catch {
+      setAllListings([])
+    }
+  }, [isDbReady])
 
   useEffect(() => {
     refreshListings()
   }, [refreshListings, successMessage, createdListingId])
 
   useEffect(() => {
-    window.addEventListener(LOST_FOUND_LISTINGS_UPDATED_EVENT, refreshListings)
-    window.addEventListener("storage", refreshListings)
+    if (isDbReady) return
+
+    const handler = () => {
+      void refreshListings()
+    }
+
+    window.addEventListener(LOST_FOUND_LISTINGS_UPDATED_EVENT, handler)
+    window.addEventListener("storage", handler)
 
     return () => {
-      window.removeEventListener(LOST_FOUND_LISTINGS_UPDATED_EVENT, refreshListings)
-      window.removeEventListener("storage", refreshListings)
+      window.removeEventListener(LOST_FOUND_LISTINGS_UPDATED_EVENT, handler)
+      window.removeEventListener("storage", handler)
     }
-  }, [refreshListings])
+  }, [refreshListings, isDbReady])
 
   const filteredListings = useMemo(() => {
     return allListings.filter((listing) => {

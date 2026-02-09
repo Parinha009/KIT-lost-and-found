@@ -21,22 +21,65 @@ const lostFoundService = getLostFoundWebService()
 
 export default function MyListingsPage() {
   const { user } = useAuth()
+  const [isDbReady, setIsDbReady] = useState(false)
   const [allListings, setAllListings] = useState<Listing[]>([])
 
   useEffect(() => {
-    const refreshListings = () => {
-      setAllListings(lostFoundService.getListings())
+    let cancelled = false
+
+    async function checkDb() {
+      try {
+        const res = await fetch("/api/health/db", { cache: "no-store" })
+        if (!cancelled) setIsDbReady(res.ok)
+      } catch {
+        if (!cancelled) setIsDbReady(false)
+      }
+    }
+
+    checkDb()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function refreshListings() {
+      if (!isDbReady) {
+        setAllListings(lostFoundService.getListings())
+        return
+      }
+
+      try {
+        const res = await fetch("/api/listings", { cache: "no-store" })
+        const json = (await res.json()) as { data?: Listing[] }
+        if (!cancelled) setAllListings(Array.isArray(json.data) ? json.data : [])
+      } catch {
+        if (!cancelled) setAllListings([])
+      }
     }
 
     refreshListings()
-    window.addEventListener(LOST_FOUND_LISTINGS_UPDATED_EVENT, refreshListings)
-    window.addEventListener("storage", refreshListings)
+
+    if (!isDbReady) {
+      const handler = () => {
+        void refreshListings()
+      }
+      window.addEventListener(LOST_FOUND_LISTINGS_UPDATED_EVENT, handler)
+      window.addEventListener("storage", handler)
+
+      return () => {
+        cancelled = true
+        window.removeEventListener(LOST_FOUND_LISTINGS_UPDATED_EVENT, handler)
+        window.removeEventListener("storage", handler)
+      }
+    }
 
     return () => {
-      window.removeEventListener(LOST_FOUND_LISTINGS_UPDATED_EVENT, refreshListings)
-      window.removeEventListener("storage", refreshListings)
+      cancelled = true
     }
-  }, [])
+  }, [isDbReady])
 
   const myListings = useMemo(() => {
     return allListings.filter((listing) => listing.user_id === user?.id)

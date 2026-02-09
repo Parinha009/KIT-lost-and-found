@@ -420,16 +420,11 @@ export default function ListingDetailPage({ params }: ListingDetailPageProps) {
                       </p>
                     </div>
                     {isStaffOrAdmin && claim.status === "pending" && (
-                      <div className="flex gap-2">
-                        <Button size="sm" variant="outline">
-                          <CheckCircle className="w-4 h-4 mr-1" />
-                          Approve
-                        </Button>
-                        <Button size="sm" variant="outline">
-                          <AlertCircle className="w-4 h-4 mr-1" />
-                          Reject
-                        </Button>
-                      </div>
+                      <Button size="sm" variant="outline" asChild>
+                        <Link href="/claims">
+                          Review in Claims
+                        </Link>
+                      </Button>
                     )}
                   </div>
                 ))}

@@ -9,7 +9,7 @@ import type {
 // Mock Users
 export const mockUsers: User[] = [
   {
-    id: "user-1",
+    id: "ede8d1b1-2ff1-40fd-b87a-3de286a10d24",
     email: "student@kit.edu.kh",
     name: "Sovann Chan",
     phone: "+855 12 345 678",
@@ -19,7 +19,7 @@ export const mockUsers: User[] = [
     updated_at: "2024-01-15T08:00:00Z",
   },
   {
-    id: "user-2",
+    id: "53285713-6e0d-4140-a889-cc579659da81",
     email: "security@kit.edu.kh",
     name: "Dara Kim",
     phone: "+855 12 987 654",
@@ -29,7 +29,7 @@ export const mockUsers: User[] = [
     updated_at: "2024-01-10T08:00:00Z",
   },
   {
-    id: "user-3",
+    id: "60183042-5c3a-49cb-8ef9-79c7ce0754a6",
     email: "admin@kit.edu.kh",
     name: "Bopha Pich",
     role: "admin",
@@ -52,7 +52,7 @@ export const mockListings: Listing[] = [
     location_details: "Near the vending machines",
     date_occurred: "2024-01-20T12:30:00Z",
     status: "active",
-    user_id: "user-1",
+    user_id: "ede8d1b1-2ff1-40fd-b87a-3de286a10d24",
     user: mockUsers[0],
     photos: [
       {
@@ -78,7 +78,7 @@ export const mockListings: Listing[] = [
     status: "active",
     storage_location: "Security Office",
     storage_details: "Shelf B-3",
-    user_id: "user-2",
+    user_id: "53285713-6e0d-4140-a889-cc579659da81",
     user: mockUsers[1],
     photos: [
       {
@@ -103,7 +103,7 @@ export const mockListings: Listing[] = [
     status: "active",
     storage_location: "Security Office",
     storage_details: "Locked cabinet",
-    user_id: "user-2",
+    user_id: "53285713-6e0d-4140-a889-cc579659da81",
     user: mockUsers[1],
     photos: [
       {
@@ -126,7 +126,7 @@ export const mockListings: Listing[] = [
     location: "Parking Lot",
     date_occurred: "2024-01-23T08:00:00Z",
     status: "active",
-    user_id: "user-1",
+    user_id: "ede8d1b1-2ff1-40fd-b87a-3de286a10d24",
     user: mockUsers[0],
     photos: [
       {
@@ -149,7 +149,7 @@ export const mockListings: Listing[] = [
     date_occurred: "2024-01-23T16:00:00Z",
     status: "matched",
     storage_location: "Admin Office",
-    user_id: "user-2",
+    user_id: "53285713-6e0d-4140-a889-cc579659da81",
     user: mockUsers[1],
     photos: [
       {
@@ -172,7 +172,7 @@ export const mockListings: Listing[] = [
     location_details: "Basketball court area",
     date_occurred: "2024-01-24T18:00:00Z",
     status: "active",
-    user_id: "user-1",
+    user_id: "ede8d1b1-2ff1-40fd-b87a-3de286a10d24",
     user: mockUsers[0],
     photos: [
       {
@@ -193,7 +193,7 @@ export const mockClaims: Claim[] = [
     id: "claim-1",
     listing_id: "listing-3",
     listing: mockListings[2],
-    claimant_id: "user-1",
+    claimant_id: "ede8d1b1-2ff1-40fd-b87a-3de286a10d24",
     claimant: mockUsers[0],
     status: "pending",
     proof_description:
@@ -205,9 +205,9 @@ export const mockClaims: Claim[] = [
     id: "claim-2",
     listing_id: "listing-5",
     listing: mockListings[4],
-    claimant_id: "user-1",
+    claimant_id: "ede8d1b1-2ff1-40fd-b87a-3de286a10d24",
     claimant: mockUsers[0],
-    reviewer_id: "user-2",
+    reviewer_id: "53285713-6e0d-4140-a889-cc579659da81",
     reviewer: mockUsers[1],
     status: "approved",
     proof_description: "My full name is Sokunthea and my student ID is KIT2024001.",
@@ -222,7 +222,7 @@ export const mockClaims: Claim[] = [
 export const mockNotifications: Notification[] = [
   {
     id: "notif-1",
-    user_id: "user-1",
+    user_id: "ede8d1b1-2ff1-40fd-b87a-3de286a10d24",
     type: "match",
     title: "Potential Match Found",
     message:
@@ -233,7 +233,7 @@ export const mockNotifications: Notification[] = [
   },
   {
     id: "notif-2",
-    user_id: "user-1",
+    user_id: "ede8d1b1-2ff1-40fd-b87a-3de286a10d24",
     type: "claim_approved",
     title: "Claim Approved",
     message:
@@ -244,7 +244,7 @@ export const mockNotifications: Notification[] = [
   },
   {
     id: "notif-3",
-    user_id: "user-2",
+    user_id: "53285713-6e0d-4140-a889-cc579659da81",
     type: "claim_submitted",
     title: "New Claim Submitted",
     message: "A new claim has been submitted for 'iPhone 14 Pro'. Please review.",

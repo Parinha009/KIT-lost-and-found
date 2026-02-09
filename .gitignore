@@ -28,3 +28,4 @@ next-env.d.ts
 
 # temp cwd markers
 tmpclaude-*-cwd
+tmp-delete-test.txt
