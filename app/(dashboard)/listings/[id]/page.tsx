@@ -102,10 +102,19 @@ export default function ListingDetailPage({ params }: ListingDetailPageProps) {
 
   const isOwner = user?.id === listing.user_id
   const isStaffOrAdmin = user?.role === "staff" || user?.role === "admin"
-  const canClaim = listing.type === "found" && listing.status === "active" && !isOwner
-  const hasExistingClaim = claims.some(
-    (c) => c.claimant_id === user?.id && c.status === "pending"
-  )
+  const canManageListing = isOwner && isStaffOrAdmin
+  const userClaims = claims.filter((claim) => claim.claimant_id === user?.id)
+  const hasSubmittedClaim = userClaims.length > 0
+  const latestUserClaim = [...userClaims].sort(
+    (a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
+  )[0]
+  const canClaim =
+    user?.role === "student" &&
+    listing.type === "found" &&
+    !isOwner &&
+    (listing.status === "active" || listing.status === "matched") &&
+    !hasSubmittedClaim
+  const visibleClaims = isStaffOrAdmin || isOwner ? claims : userClaims
 
   const handleSubmitClaim = async () => {
     if (!listing || !user) return
@@ -365,15 +374,23 @@ export default function ListingDetailPage({ params }: ListingDetailPageProps) {
             </CardContent>
           </Card>
 
-          {/* Claims Section (for staff/admin or owner) */}
-          {(isStaffOrAdmin || isOwner) && claims.length > 0 && (
+          {/* Claims Section */}
+          {visibleClaims.length > 0 && (
             <Card>
               <CardHeader>
-                <CardTitle className="text-lg">Claims ({claims.length})</CardTitle>
-                <CardDescription>People who have claimed this item</CardDescription>
+                <CardTitle className="text-lg">
+                  {isStaffOrAdmin || isOwner
+                    ? `Claims (${visibleClaims.length})`
+                    : "Your Claim"}
+                </CardTitle>
+                <CardDescription>
+                  {isStaffOrAdmin || isOwner
+                    ? "People who have claimed this item"
+                    : "Your claim status for this item"}
+                </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                {claims.map((claim) => (
+                {visibleClaims.map((claim) => (
                   <div
                     key={claim.id}
                     className="flex items-start gap-4 p-4 rounded-lg bg-muted/50"
@@ -459,7 +476,7 @@ export default function ListingDetailPage({ params }: ListingDetailPageProps) {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-2">
-              {canClaim && !hasExistingClaim && (
+              {canClaim && (
                 <Dialog open={claimDialogOpen} onOpenChange={setClaimDialogOpen}>
                   <DialogTrigger asChild>
                     <Button className="w-full">
@@ -505,13 +522,31 @@ export default function ListingDetailPage({ params }: ListingDetailPageProps) {
                 </Dialog>
               )}
 
-              {hasExistingClaim && (
+              {latestUserClaim?.status === "pending" && (
                 <div className="p-3 bg-muted rounded-md text-sm text-muted-foreground text-center">
-                  You have already submitted a claim for this item
+                  You have already submitted a claim for this item.
                 </div>
               )}
 
-              {isOwner && (
+              {latestUserClaim?.status === "approved" && (
+                <div className="p-3 rounded-md text-sm text-accent bg-accent/10 text-center">
+                  Your claim has been approved. Please coordinate pickup with staff.
+                </div>
+              )}
+
+              {latestUserClaim?.status === "rejected" && (
+                <div className="p-3 rounded-md text-sm text-destructive bg-destructive/10 text-center">
+                  Your latest claim was rejected. Review the details and contact staff if needed.
+                </div>
+              )}
+
+              {isOwner && user?.role === "student" && (
+                <div className="p-3 bg-muted rounded-md text-sm text-muted-foreground text-center">
+                  Listing updates, closure, and deletion are managed by staff or admin.
+                </div>
+              )}
+
+              {canManageListing && (
                 <>
                   <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
                     <DialogTrigger asChild>
