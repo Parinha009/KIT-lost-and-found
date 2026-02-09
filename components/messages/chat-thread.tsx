@@ -43,11 +43,13 @@ export function ChatThread({
 }: ChatThreadProps) {
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null)
   const [editingBody, setEditingBody] = useState("")
+  const [editingOriginalBody, setEditingOriginalBody] = useState("")
   const editingInputRef = useRef<HTMLTextAreaElement | null>(null)
 
   useEffect(() => {
     setEditingMessageId(null)
     setEditingBody("")
+    setEditingOriginalBody("")
   }, [conversation?.id])
 
   useEffect(() => {
@@ -70,11 +72,13 @@ export function ChatThread({
   const handleStartEdit = (message: Message) => {
     setEditingMessageId(message.id)
     setEditingBody(message.body)
+    setEditingOriginalBody(message.body)
   }
 
   const handleCancelEdit = () => {
     setEditingMessageId(null)
     setEditingBody("")
+    setEditingOriginalBody("")
   }
 
   const handleSaveEdit = () => {
@@ -82,6 +86,7 @@ export function ChatThread({
     onEditMessage(editingMessageId, editingBody)
     setEditingMessageId(null)
     setEditingBody("")
+    setEditingOriginalBody("")
   }
 
   const handleEditKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -176,15 +181,28 @@ export function ChatThread({
                   >
                     {isEditing ? (
                       <div className="space-y-2">
+                        <div
+                          className={cn(
+                            "rounded-md border px-3 py-2 text-xs",
+                            isMine
+                              ? "border-primary-foreground/35 bg-primary-foreground/10 text-primary-foreground"
+                              : "border-border bg-muted/40 text-foreground"
+                          )}
+                        >
+                          <p className="font-semibold">Original message</p>
+                          <p className="mt-1 whitespace-pre-wrap break-words opacity-95">
+                            {editingOriginalBody || "(empty message)"}
+                          </p>
+                        </div>
                         <Textarea
                           ref={editingInputRef}
                           value={editingBody}
                           onChange={(event) => setEditingBody(event.target.value)}
                           onKeyDown={handleEditKeyDown}
                           className={cn(
-                            "min-h-20 resize-none border",
+                            "min-h-20 resize-none border bg-background text-foreground placeholder:text-muted-foreground",
                             isMine
-                              ? "border-primary-foreground/30 bg-primary/70 text-primary-foreground placeholder:text-primary-foreground/70"
+                              ? "border-primary-foreground/40 focus-visible:border-primary-foreground"
                               : "bg-background"
                           )}
                         />
