@@ -27,8 +27,8 @@ import {
   LogOut,
   Shield,
 } from "lucide-react"
-import { useState } from "react"
-import { getUnreadNotificationCount } from "@/lib/mock-data"
+import { useEffect, useState } from "react"
+import { getUnreadNotificationCount } from "@/lib/items"
 import { cn } from "@/lib/utils"
 
 const navigation = [
@@ -43,8 +43,28 @@ export function AppHeader() {
   const router = useRouter()
   const { user, logout } = useAuth()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
-  
-  const unreadCount = user ? getUnreadNotificationCount(user.id) : 0
+  const [unreadCount, setUnreadCount] = useState(0)
+
+  useEffect(() => {
+    if (!user) {
+      setUnreadCount(0)
+      return
+    }
+
+    const refreshUnreadCount = () => {
+      setUnreadCount(getUnreadNotificationCount(user.id))
+    }
+
+    refreshUnreadCount()
+    window.addEventListener("kit-lf-notifications-updated", refreshUnreadCount)
+    window.addEventListener("storage", refreshUnreadCount)
+
+    return () => {
+      window.removeEventListener("kit-lf-notifications-updated", refreshUnreadCount)
+      window.removeEventListener("storage", refreshUnreadCount)
+    }
+  }, [user, pathname])
+
   const initials = user?.name
     ?.split(" ")
     .map((n) => n[0])

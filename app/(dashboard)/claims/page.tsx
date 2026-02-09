@@ -2,7 +2,7 @@
 
 import React from "react"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import Link from "next/link"
 import { useAuth } from "@/lib/auth-context"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -29,9 +29,14 @@ import {
   FileText,
   AlertTriangle,
 } from "lucide-react"
-import { mockClaims } from "@/lib/mock-data"
+import {
+  createNotification,
+  getAllClaims,
+  updateClaimStatus,
+} from "@/lib/items"
 import { formatDateTime, formatDistanceToNow } from "@/lib/date-utils"
 import type { Claim, ClaimStatus } from "@/lib/types"
+import { toast } from "sonner"
 
 const statusColors: Record<ClaimStatus, string> = {
   pending: "bg-yellow-500/10 text-yellow-600 border-yellow-500/20",
@@ -47,12 +52,27 @@ const statusIcons: Record<ClaimStatus, React.ReactNode> = {
 
 export default function ClaimsPage() {
   const { user } = useAuth()
-  const [claims, setClaims] = useState<Claim[]>(mockClaims)
+  const [claims, setClaims] = useState<Claim[]>([])
   const [selectedClaim, setSelectedClaim] = useState<Claim | null>(null)
   const [actionDialog, setActionDialog] = useState<"approve" | "reject" | null>(null)
   const [rejectionReason, setRejectionReason] = useState("")
   const [handoverNotes, setHandoverNotes] = useState("")
   const [isProcessing, setIsProcessing] = useState(false)
+
+  useEffect(() => {
+    const refreshClaims = () => {
+      setClaims(getAllClaims())
+    }
+
+    refreshClaims()
+    window.addEventListener("kit-lf-claims-updated", refreshClaims)
+    window.addEventListener("storage", refreshClaims)
+
+    return () => {
+      window.removeEventListener("kit-lf-claims-updated", refreshClaims)
+      window.removeEventListener("storage", refreshClaims)
+    }
+  }, [])
 
   const isStaffOrAdmin = user?.role === "staff" || user?.role === "admin"
 
@@ -62,52 +82,78 @@ export default function ClaimsPage() {
   const processedClaims = claims.filter((c) => c.status !== "pending")
 
   const handleApprove = async () => {
-    if (!selectedClaim) return
+    if (!selectedClaim || !user) return
     setIsProcessing(true)
-    await new Promise((resolve) => setTimeout(resolve, 1000))
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 500))
+      const updatedClaim = updateClaimStatus(selectedClaim.id, {
+        status: "approved",
+        reviewer_id: user.id,
+        handover_at: new Date().toISOString(),
+        handover_notes: handoverNotes.trim() || undefined,
+      })
 
-    setClaims((prev) =>
-      prev.map((c) =>
-        c.id === selectedClaim.id
-          ? {
-              ...c,
-              status: "approved" as ClaimStatus,
-              reviewer_id: user?.id,
-              handover_at: new Date().toISOString(),
-              handover_notes: handoverNotes,
-            }
-          : c
-      )
-    )
+      if (!updatedClaim) {
+        toast.error("Unable to approve this claim.")
+        return
+      }
 
-    setIsProcessing(false)
-    setActionDialog(null)
-    setSelectedClaim(null)
-    setHandoverNotes("")
+      createNotification({
+        user_id: updatedClaim.claimant_id,
+        type: "claim_approved",
+        title: `Claim approved for "${updatedClaim.listing?.title || "your item"}"`,
+        message:
+          `Your claim for "${updatedClaim.listing?.title || "this item"}" was approved.` +
+          " Please coordinate pickup with staff.",
+        related_listing_id: updatedClaim.listing_id,
+        related_claim_id: updatedClaim.id,
+      })
+
+      setClaims(getAllClaims())
+      toast.success("Claim approved and claimant notified.")
+      setActionDialog(null)
+      setSelectedClaim(null)
+      setHandoverNotes("")
+    } finally {
+      setIsProcessing(false)
+    }
   }
 
   const handleReject = async () => {
-    if (!selectedClaim || !rejectionReason.trim()) return
+    if (!selectedClaim || !rejectionReason.trim() || !user) return
     setIsProcessing(true)
-    await new Promise((resolve) => setTimeout(resolve, 1000))
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 500))
+      const updatedClaim = updateClaimStatus(selectedClaim.id, {
+        status: "rejected",
+        reviewer_id: user.id,
+        rejection_reason: rejectionReason.trim(),
+      })
 
-    setClaims((prev) =>
-      prev.map((c) =>
-        c.id === selectedClaim.id
-          ? {
-              ...c,
-              status: "rejected" as ClaimStatus,
-              reviewer_id: user?.id,
-              rejection_reason: rejectionReason,
-            }
-          : c
-      )
-    )
+      if (!updatedClaim) {
+        toast.error("Unable to reject this claim.")
+        return
+      }
 
-    setIsProcessing(false)
-    setActionDialog(null)
-    setSelectedClaim(null)
-    setRejectionReason("")
+      createNotification({
+        user_id: updatedClaim.claimant_id,
+        type: "claim_rejected",
+        title: `Claim rejected for "${updatedClaim.listing?.title || "your item"}"`,
+        message:
+          `Your claim for "${updatedClaim.listing?.title || "this item"}" was rejected. ` +
+          `Reason: ${rejectionReason.trim()}`,
+        related_listing_id: updatedClaim.listing_id,
+        related_claim_id: updatedClaim.id,
+      })
+
+      setClaims(getAllClaims())
+      toast.success("Claim rejected and claimant notified.")
+      setActionDialog(null)
+      setSelectedClaim(null)
+      setRejectionReason("")
+    } finally {
+      setIsProcessing(false)
+    }
   }
 
   const ClaimCard = ({ claim, showActions = false }: { claim: Claim; showActions?: boolean }) => {

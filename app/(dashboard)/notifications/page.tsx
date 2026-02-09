@@ -2,7 +2,7 @@
 
 import React from "react"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import Link from "next/link"
 import { useAuth } from "@/lib/auth-context"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -19,7 +19,11 @@ import {
   Package,
   Inbox,
 } from "lucide-react"
-import { getUserNotifications } from "@/lib/mock-data"
+import {
+  getUserNotifications,
+  markAllNotificationsAsRead,
+  markNotificationAsRead,
+} from "@/lib/items"
 import { formatDistanceToNow } from "@/lib/date-utils"
 import type { Notification, NotificationType } from "@/lib/types"
 
@@ -41,21 +45,45 @@ const notificationColors: Record<NotificationType, string> = {
 
 export default function NotificationsPage() {
   const { user } = useAuth()
-  const [notifications, setNotifications] = useState<Notification[]>(
-    user ? getUserNotifications(user.id) : []
-  )
+  const [notifications, setNotifications] = useState<Notification[]>([])
+
+  useEffect(() => {
+    if (!user) {
+      setNotifications([])
+      return
+    }
+
+    const refreshNotifications = () => {
+      setNotifications(getUserNotifications(user.id))
+    }
+
+    refreshNotifications()
+    window.addEventListener("kit-lf-notifications-updated", refreshNotifications)
+    window.addEventListener("storage", refreshNotifications)
+
+    return () => {
+      window.removeEventListener("kit-lf-notifications-updated", refreshNotifications)
+      window.removeEventListener("storage", refreshNotifications)
+    }
+  }, [user])
 
   const unreadNotifications = notifications.filter((n) => !n.is_read)
   const readNotifications = notifications.filter((n) => n.is_read)
 
   const markAsRead = (id: string) => {
-    setNotifications((prev) =>
-      prev.map((n) => (n.id === id ? { ...n, is_read: true } : n))
-    )
+    if (!user) return
+    const updated = markNotificationAsRead(id)
+    if (updated) {
+      setNotifications(getUserNotifications(user.id))
+    }
   }
 
   const markAllAsRead = () => {
-    setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })))
+    if (!user) return
+    const updatedCount = markAllNotificationsAsRead(user.id)
+    if (updatedCount > 0) {
+      setNotifications(getUserNotifications(user.id))
+    }
   }
 
   const NotificationItem = ({ notification }: { notification: Notification }) => {

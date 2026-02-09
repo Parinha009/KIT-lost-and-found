@@ -5,7 +5,15 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/lib/auth-context"
 import { createClaimSchema } from "@/lib/validators"
-import { deleteListing, getListing, getListingClaims, updateListing } from "@/lib/items"
+import {
+  createClaim,
+  createNotification,
+  deleteListing,
+  evaluateClaimMatch,
+  getListing,
+  getListingClaims,
+  updateListing,
+} from "@/lib/items"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -100,7 +108,7 @@ export default function ListingDetailPage({ params }: ListingDetailPageProps) {
   )
 
   const handleSubmitClaim = async () => {
-    if (!listing) return
+    if (!listing || !user) return
 
     setIsSubmitting(true)
     try {
@@ -109,10 +117,47 @@ export default function ListingDetailPage({ params }: ListingDetailPageProps) {
         proof_description: claimProof,
       })
 
-      await new Promise((resolve) => setTimeout(resolve, 800))
+      const matchResult = evaluateClaimMatch(listing.id, user.id, claimProof)
+      if (!matchResult.isMatch) {
+        toast.error(
+          matchResult.reasons[0] || "Claim details do not align with this item."
+        )
+        return
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 500))
+      const createdClaim = createClaim({
+        listing_id: listing.id,
+        claimant_id: user.id,
+        proof_description: claimProof.trim(),
+      })
+
+      if (!createdClaim) {
+        toast.error("You already have a pending claim for this item.")
+        return
+      }
+
+      const linkedLostListing = matchResult.linkedLostListingId
+        ? getListing(matchResult.linkedLostListingId)
+        : undefined
+
+      const linkedLostContext = linkedLostListing
+        ? `Linked lost report: "${linkedLostListing.title}".`
+        : "Claim details were matched directly against this found listing."
+
+      createNotification({
+        user_id: listing.user_id,
+        type: "claim_submitted",
+        title: `New claim for "${listing.title}"`,
+        message: `${user.name} submitted a claim for "${listing.title}". ${linkedLostContext}`,
+        related_listing_id: listing.id,
+        related_claim_id: createdClaim.id,
+      })
+
       setClaimDialogOpen(false)
       setClaimProof("")
-      toast.success("Claim submitted for review")
+      setRefreshKey((prev) => prev + 1)
+      toast.success("Claim submitted and sent to staff review.")
     } catch {
       toast.error("Please provide clearer proof (at least 20 characters)")
     } finally {
