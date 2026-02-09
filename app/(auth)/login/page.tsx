@@ -5,6 +5,7 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { Search, Eye, EyeOff, ArrowLeft } from "lucide-react"
 import { useAuth } from "@/lib/auth-context"
+import { loginSchema } from "@/lib/validators"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -22,8 +23,6 @@ const demoEmails: Record<DemoRole, string> = {
   staff: "security@kit.edu.kh",
   admin: "admin@kit.edu.kh",
 }
-
-const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 export default function LoginPage() {
   const router = useRouter()
@@ -61,23 +60,28 @@ export default function LoginPage() {
 
   const validateForm = () => {
     const nextErrors: FieldErrors = {}
-    const trimmedEmail = email.trim()
+    const parsed = loginSchema.safeParse({
+      email: email.trim(),
+      password,
+    })
 
-    if (!trimmedEmail) {
-      nextErrors.email = "Email is required."
-    } else if (!emailPattern.test(trimmedEmail)) {
-      nextErrors.email = "Enter a valid email address."
-    }
-
-    if (!password) {
-      nextErrors.password = "Password is required."
+    if (!parsed.success) {
+      parsed.error.errors.forEach((issue) => {
+        const path = issue.path[0]
+        if (path === "email" && !nextErrors.email) {
+          nextErrors.email = issue.message
+        }
+        if (path === "password" && !nextErrors.password) {
+          nextErrors.password = issue.message
+        }
+      })
     }
 
     setFieldErrors(nextErrors)
 
     return {
       isValid: Object.keys(nextErrors).length === 0,
-      trimmedEmail,
+      trimmedEmail: email.trim(),
     }
   }
 

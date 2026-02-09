@@ -86,6 +86,20 @@ export const listingFiltersSchema = z.object({
 
 export type ListingFiltersInput = z.infer<typeof listingFiltersSchema>
 
+// Login form validation
+export const loginSchema = z.object({
+  email: z
+    .string()
+    .trim()
+    .email("Please enter a valid email address")
+    .refine((value) => value.toLowerCase().endsWith("@kit.edu.kh"), {
+      message: "Please use your KIT campus email (@kit.edu.kh)",
+    }),
+  password: z.string().min(1, "Password is required"),
+})
+
+export type LoginInput = z.infer<typeof loginSchema>
+
 // Register form validation
 export const registerSchema = z
   .object({
