@@ -180,6 +180,14 @@ async function main() {
   const supabaseUrl = supabaseUrlRaw ? supabaseUrlRaw.replace(/\/+$/, "") : ""
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || ""
 
+  if (!supabaseUrl || !serviceRoleKey) {
+    console.error(
+      "Seeding demo listings with images requires NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY so we can upload images to Supabase Storage (listing-images)."
+    )
+    process.exitCode = 1
+    return
+  }
+
   function sanitizeFilename(name) {
     const trimmed = String(name || "").trim() || "upload"
     return trimmed.replace(/[^a-zA-Z0-9._-]/g, "_")
@@ -225,6 +233,45 @@ async function main() {
     })
 
     if (!response.ok) return null
+
+    return `${supabaseUrl}/storage/v1/object/public/listing-images/${encodedPath}`
+  }
+
+  function extensionFromContentType(type) {
+    const normalized = String(type || "").toLowerCase()
+    if (normalized.includes("png")) return "png"
+    if (normalized.includes("webp")) return "webp"
+    if (normalized.includes("gif")) return "gif"
+    return "jpg"
+  }
+
+  async function uploadRemoteImageToStorage({ userId, listingId, url, index }) {
+    if (!url) return null
+
+    const response = await fetch(url, { redirect: "follow" })
+    if (!response.ok) return null
+
+    const contentType = response.headers.get("content-type") || "image/jpeg"
+    const ext = extensionFromContentType(contentType)
+    const filename = sanitizeFilename(`seed-remote-${index}.${ext}`)
+    const objectPath = `${userId}/${listingId}/${filename}`
+    const encodedPath = encodeStoragePath(objectPath)
+
+    const uploadUrl = `${supabaseUrl}/storage/v1/object/listing-images/${encodedPath}`
+    const body = Buffer.from(await response.arrayBuffer())
+
+    const uploadResponse = await fetch(uploadUrl, {
+      method: "POST",
+      headers: {
+        apikey: serviceRoleKey,
+        authorization: `Bearer ${serviceRoleKey}`,
+        "content-type": contentType,
+        "x-upsert": "true",
+      },
+      body,
+    })
+
+    if (!uploadResponse.ok) return null
 
     return `${supabaseUrl}/storage/v1/object/public/listing-images/${encodedPath}`
   }
@@ -282,7 +329,7 @@ async function main() {
       if (!id) continue
 
       const finalPhotoUrls = []
-      for (const url of listing.photos) {
+      for (const [photoIndex, url] of listing.photos.entries()) {
         if (typeof url !== "string" || !url) continue
 
         if (url.startsWith("/")) {
@@ -291,11 +338,30 @@ async function main() {
             listingId: id,
             publicPath: url,
           })
-          finalPhotoUrls.push(uploaded || url)
+          if (!uploaded) {
+            throw new Error(
+              `Failed to upload local seed image "${url}" to Supabase Storage. Check bucket "listing-images" exists and SUPABASE_SERVICE_ROLE_KEY is valid.`
+            )
+          }
+          finalPhotoUrls.push(uploaded)
           continue
         }
 
-        finalPhotoUrls.push(url)
+        if (url.startsWith("http://") || url.startsWith("https://")) {
+          const uploaded = await uploadRemoteImageToStorage({
+            userId: listing.user_id,
+            listingId: id,
+            url,
+            index: photoIndex,
+          })
+          if (!uploaded) {
+            throw new Error(
+              `Failed to upload remote seed image "${url}" to Supabase Storage.`
+            )
+          }
+          finalPhotoUrls.push(uploaded)
+          continue
+        }
       }
 
       await sql`

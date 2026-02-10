@@ -14,7 +14,9 @@ interface ListingCardProps {
 }
 
 export function ListingCard({ listing }: ListingCardProps) {
-  const hasPhoto = listing.photos && listing.photos.length > 0
+  const primaryImageUrl =
+    listing.image_urls?.[0]?.trim() || listing.photos?.[0]?.url?.trim() || ""
+  const hasPhoto = primaryImageUrl.length > 0
 
   return (
     <Card className="group h-full overflow-hidden gap-0 py-0 transition-all duration-200 ease-out motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-2 motion-safe:duration-300 motion-safe:hover:-translate-y-1 motion-safe:hover:shadow-lg">
@@ -22,7 +24,7 @@ export function ListingCard({ listing }: ListingCardProps) {
       <div className="relative h-[220px] w-full overflow-hidden bg-muted">
         {hasPhoto ? (
           <Image
-            src={listing.photos[0].url || "/placeholder.svg"}
+            src={primaryImageUrl}
             alt={listing.title}
             fill
             sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"

@@ -38,3 +38,19 @@ This project now includes server-side database connectivity scaffolding using Dr
 - `pnpm db:push`
 - `pnpm db:studio`
 
+## Seed Demo Listings (Run Once)
+
+To pre-populate the database with the 6 demo listings (AirPods, iPhone, Student ID, etc.) and store their images in Supabase Storage:
+
+1. Ensure your env vars are set in `.env.local`:
+   - `SUPABASE_DB_URL` (or `DATABASE_URL` / `POSTGRES_URL`)
+   - `NEXT_PUBLIC_SUPABASE_URL`
+   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+   - `SUPABASE_SERVICE_ROLE_KEY` (required for Storage uploads)
+2. Bootstrap schema and bucket (idempotent):
+   - `pnpm db:bootstrap`
+3. Seed demo data (idempotent):
+   - `pnpm db:seed`
+
+After seeding, refresh the app and the demo items should appear in Browse and My Listings with images.
+

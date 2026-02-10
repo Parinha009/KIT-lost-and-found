@@ -47,6 +47,8 @@ export default function ListingDetailPage({ params }: ListingDetailPageProps) {
   const resolvedParams = use(params)
   const router = useRouter()
   const { user } = useAuth()
+  const claimsEnabled = false
+  const matchingEnabled = false
   const [claimDialogOpen, setClaimDialogOpen] = useState(false)
   const [editDialogOpen, setEditDialogOpen] = useState(false)
   const [matchDialogOpen, setMatchDialogOpen] = useState(false)
@@ -78,7 +80,7 @@ export default function ListingDetailPage({ params }: ListingDetailPageProps) {
         const nextListing = res.ok && json.ok && json.data ? json.data : null
         if (!cancelled) setListing(nextListing)
 
-        if (!nextListing || !user) {
+        if (!nextListing || !user || !claimsEnabled) {
           if (!cancelled) setClaims([])
           return
         }
@@ -178,6 +180,10 @@ export default function ListingDetailPage({ params }: ListingDetailPageProps) {
   const visibleClaims = isStaffOrAdmin || isOwner ? claims : userClaims
 
   const handleSubmitClaim = async () => {
+    if (!claimsEnabled) {
+      toast("Claims are coming soon.")
+      return
+    }
     if (!listing || !user) return
 
     setIsSubmitting(true)
@@ -225,6 +231,10 @@ export default function ListingDetailPage({ params }: ListingDetailPageProps) {
   }
 
   const handleMatchListing = async () => {
+    if (!matchingEnabled) {
+      toast("Matching is coming soon.")
+      return
+    }
     if (!listing || !user) return
     if (!isStaffOrAdmin) return
 
@@ -373,9 +383,13 @@ export default function ListingDetailPage({ params }: ListingDetailPageProps) {
           {/* Image Gallery */}
           <Card className="overflow-hidden">
             <div className="relative aspect-video bg-muted">
-              {listing.photos && listing.photos.length > 0 ? (
+              {(listing.image_urls?.length ?? 0) > 0 || (listing.photos?.length ?? 0) > 0 ? (
                 <Image
-                  src={listing.photos[0].url || "/placeholder.svg"}
+                  src={
+                    listing.image_urls?.[0]?.trim() ||
+                    listing.photos?.[0]?.url?.trim() ||
+                    "/placeholder.svg"
+                  }
                   alt={listing.title}
                   fill
                   sizes="(min-width: 1024px) 66vw, 100vw"
@@ -394,15 +408,16 @@ export default function ListingDetailPage({ params }: ListingDetailPageProps) {
               </Badge>
             </div>
 
-            {listing.photos && listing.photos.length > 1 && (
+            {((listing.image_urls?.length ?? 0) > 1 || (listing.photos?.length ?? 0) > 1) && (
               <div className="p-4 grid grid-cols-4 gap-2">
-                {listing.photos.slice(1).map((photo, index) => (
+                {(listing.image_urls?.length ? listing.image_urls.slice(1) : listing.photos.slice(1).map((p) => p.url)).map(
+                  (url, index) => (
                   <div
-                    key={photo.id}
+                    key={`${url}-${index}`}
                     className="relative aspect-square rounded-md overflow-hidden bg-muted"
                   >
                     <Image
-                      src={photo.url || "/placeholder.svg"}
+                      src={url || "/placeholder.svg"}
                       alt={`${listing.title} ${index + 2}`}
                       fill
                       sizes="(min-width: 1024px) 16vw, 25vw"
@@ -597,7 +612,7 @@ export default function ListingDetailPage({ params }: ListingDetailPageProps) {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-2">
-              {canClaim && (
+              {claimsEnabled && canClaim && (
                 <Dialog open={claimDialogOpen} onOpenChange={setClaimDialogOpen}>
                   <DialogTrigger asChild>
                     <Button className="w-full">
@@ -731,7 +746,7 @@ export default function ListingDetailPage({ params }: ListingDetailPageProps) {
                 </Dialog>
               )}
 
-              {isStaffOrAdmin && (
+              {matchingEnabled && isStaffOrAdmin && (
                 <Dialog open={matchDialogOpen} onOpenChange={setMatchDialogOpen}>
                   <DialogTrigger asChild>
                     <Button variant="outline" className="w-full bg-transparent">
