@@ -164,9 +164,6 @@ function ReportPageContent() {
         setIsSubmitting(false)
         return
       }
-
-      const uploadedPhotoUrls = await uploadListingImages(photos)
-
       let createdListing: Listing
 
       if (isDbReady) {
@@ -186,7 +183,6 @@ function ReportPageContent() {
               phone: user.phone,
               avatar_url: user.avatar_url,
             },
-            photoUrls: uploadedPhotoUrls,
           }),
         })
 
@@ -196,7 +192,43 @@ function ReportPageContent() {
         }
 
         createdListing = json.data
+
+        if (photos.length > 0) {
+          let uploadedPhotoUrls: string[] = []
+          try {
+            uploadedPhotoUrls = await uploadListingImages(photos, {
+              userId: user.id,
+              listingId: createdListing.id,
+              strict: true,
+            })
+          } catch (error) {
+            await fetch(`/api/listings/${createdListing.id}`, { method: "DELETE" }).catch(
+              () => {}
+            )
+            throw error
+          }
+
+          if (uploadedPhotoUrls.length > 0) {
+            const patchRes = await fetch(`/api/listings/${createdListing.id}`, {
+              method: "PATCH",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ photoUrls: uploadedPhotoUrls }),
+            })
+
+            const patchJson = (await patchRes.json()) as {
+              ok?: boolean
+              data?: Listing
+              error?: string
+            }
+            if (!patchRes.ok || !patchJson.ok || !patchJson.data) {
+              throw new Error(patchJson.error || "Failed to attach listing photos")
+            }
+
+            createdListing = patchJson.data
+          }
+        }
       } else {
+        const uploadedPhotoUrls = await uploadListingImages(photos)
         createdListing = lostFoundService.createListing({
           ...validatedData,
           category: validatedData.category as ItemCategory,

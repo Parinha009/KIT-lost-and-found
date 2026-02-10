@@ -1,6 +1,7 @@
 "use client"
 
 import { use, useEffect, useMemo, useState } from "react"
+import Image from "next/image"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/lib/auth-context"
@@ -8,6 +9,7 @@ import { createClaimSchema } from "@/lib/validators"
 import {
   getLostFoundWebService,
 } from "@/lib/services/lost-found-service"
+import type { Listing } from "@/lib/types"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -62,15 +64,58 @@ export default function ListingDetailPage({ params }: ListingDetailPageProps) {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isSavingEdit, setIsSavingEdit] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
+  const [isDbReady, setIsDbReady] = useState(false)
+  const [listing, setListing] = useState<Listing | null>(null)
+  const [isLoadingListing, setIsLoadingListing] = useState(true)
 
-  const listing = useMemo(
-    () => lostFoundService.getListing(resolvedParams.id),
-    [resolvedParams.id, refreshKey]
-  )
   const claims = useMemo(
     () => (listing ? lostFoundService.getListingClaims(listing.id) : []),
-    [listing]
+    [listing, refreshKey]
   )
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function loadListing() {
+      setIsLoadingListing(true)
+      try {
+        const health = await fetch("/api/health/db", { cache: "no-store" })
+        const dbReady = health.ok
+        if (!cancelled) setIsDbReady(dbReady)
+
+        if (dbReady) {
+          const res = await fetch(`/api/listings/${resolvedParams.id}`, {
+            cache: "no-store",
+          })
+          const json = (await res.json()) as {
+            ok?: boolean
+            data?: Listing
+            error?: string
+          }
+          if (!cancelled) {
+            setListing(res.ok && json.ok && json.data ? json.data : null)
+          }
+          return
+        }
+
+        if (!cancelled) {
+          setListing(lostFoundService.getListing(resolvedParams.id) ?? null)
+        }
+      } catch {
+        if (!cancelled) {
+          setIsDbReady(false)
+          setListing(lostFoundService.getListing(resolvedParams.id) ?? null)
+        }
+      } finally {
+        if (!cancelled) setIsLoadingListing(false)
+      }
+    }
+
+    void loadListing()
+    return () => {
+      cancelled = true
+    }
+  }, [resolvedParams.id, refreshKey])
 
   useEffect(() => {
     if (!listing) return
@@ -80,6 +125,14 @@ export default function ListingDetailPage({ params }: ListingDetailPageProps) {
       locationDetails: listing.location_details || "",
     })
   }, [listing])
+
+  if (isLoadingListing) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        Loading...
+      </div>
+    )
+  }
 
   if (!listing) {
     return (
@@ -184,15 +237,37 @@ export default function ListingDetailPage({ params }: ListingDetailPageProps) {
 
     setIsSavingEdit(true)
     try {
-      const updated = lostFoundService.updateListing(listing.id, {
-        title,
-        description,
-        location_details: locationDetails || undefined,
-      })
+      if (isDbReady) {
+        const res = await fetch(`/api/listings/${listing.id}`, {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            title,
+            description,
+            location_details: locationDetails,
+          }),
+        })
 
-      if (!updated) {
-        toast.error("Unable to save changes")
-        return
+        const json = (await res.json()) as { ok?: boolean; data?: Listing; error?: string }
+        if (!res.ok || !json.ok || !json.data) {
+          toast.error(json.error || "Unable to save changes")
+          return
+        }
+
+        setListing(json.data)
+      } else {
+        const updated = lostFoundService.updateListing(listing.id, {
+          title,
+          description,
+          location_details: locationDetails || undefined,
+        })
+
+        if (!updated) {
+          toast.error("Unable to save changes")
+          return
+        }
+
+        setListing(updated)
       }
 
       setEditDialogOpen(false)
@@ -203,28 +278,62 @@ export default function ListingDetailPage({ params }: ListingDetailPageProps) {
     }
   }
 
-  const handleCloseListing = () => {
+  const handleCloseListing = async () => {
     if (!listing) return
-    const updated = lostFoundService.updateListing(listing.id, { status: "closed" })
-    if (!updated) {
+
+    try {
+      if (isDbReady) {
+        const res = await fetch(`/api/listings/${listing.id}`, {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ status: "closed" }),
+        })
+
+        const json = (await res.json()) as { ok?: boolean; data?: Listing; error?: string }
+        if (!res.ok || !json.ok || !json.data) {
+          toast.error(json.error || "Unable to close listing")
+          return
+        }
+
+        setListing(json.data)
+      } else {
+        const updated = lostFoundService.updateListing(listing.id, { status: "closed" })
+        if (!updated) {
+          toast.error("Unable to close listing")
+          return
+        }
+        setListing(updated)
+      }
+
+      setRefreshKey((prev) => prev + 1)
+      toast.success("Listing closed")
+    } catch {
       toast.error("Unable to close listing")
-      return
     }
-    setRefreshKey((prev) => prev + 1)
-    toast.success("Listing closed")
   }
 
-  const handleDeleteListing = () => {
+  const handleDeleteListing = async () => {
     if (!listing) return
     if (!window.confirm("Delete this listing permanently?")) return
 
     setIsDeleting(true)
     try {
-      const deleted = lostFoundService.deleteListing(listing.id)
-      if (!deleted) {
-        toast.error("Unable to delete listing")
-        return
+      if (isDbReady) {
+        const res = await fetch(`/api/listings/${listing.id}`, { method: "DELETE" })
+        const json = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string }
+
+        if (!res.ok || !json.ok) {
+          toast.error(json.error || "Unable to delete listing")
+          return
+        }
+      } else {
+        const deleted = lostFoundService.deleteListing(listing.id)
+        if (!deleted) {
+          toast.error("Unable to delete listing")
+          return
+        }
       }
+
       toast.success("Listing deleted")
       router.push("/listings")
     } finally {
@@ -256,10 +365,12 @@ export default function ListingDetailPage({ params }: ListingDetailPageProps) {
           <Card className="overflow-hidden">
             <div className="relative aspect-video bg-muted">
               {listing.photos && listing.photos.length > 0 ? (
-                <img
+                <Image
                   src={listing.photos[0].url || "/placeholder.svg"}
                   alt={listing.title}
-                  className="w-full h-full object-cover"
+                  fill
+                  sizes="(min-width: 1024px) 66vw, 100vw"
+                  className="object-cover"
                 />
               ) : (
                 <div className="w-full h-full flex items-center justify-center">
@@ -279,12 +390,14 @@ export default function ListingDetailPage({ params }: ListingDetailPageProps) {
                 {listing.photos.slice(1).map((photo, index) => (
                   <div
                     key={photo.id}
-                    className="aspect-square rounded-md overflow-hidden bg-muted"
+                    className="relative aspect-square rounded-md overflow-hidden bg-muted"
                   >
-                    <img
+                    <Image
                       src={photo.url || "/placeholder.svg"}
                       alt={`${listing.title} ${index + 2}`}
-                      className="w-full h-full object-cover"
+                      fill
+                      sizes="(min-width: 1024px) 16vw, 25vw"
+                      className="object-cover"
                     />
                   </div>
                 ))}
