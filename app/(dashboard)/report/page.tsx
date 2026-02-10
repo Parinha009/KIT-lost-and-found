@@ -6,7 +6,6 @@ import { useState, useEffect, Suspense } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useAuth } from "@/lib/auth-context"
 import { createListingSchema } from "@/lib/validators"
-import { getLostFoundWebService } from "@/lib/services/lost-found-service"
 import { uploadListingImages } from "@/lib/upload-adapter"
 import type { Listing } from "@/lib/types"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -32,8 +31,6 @@ import {
 import { Package, Search, Upload, X, MapPin, Calendar, FileText } from "lucide-react"
 import { toast } from "sonner"
 import { ZodError } from "zod"
-
-const lostFoundService = getLostFoundWebService()
 
 function ReportPageContent() {
   const router = useRouter()
@@ -166,76 +163,79 @@ function ReportPageContent() {
       }
       let createdListing: Listing
 
-      if (isDbReady) {
-        const res = await fetch("/api/listings", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            ...validatedData,
-            category: validatedData.category as ItemCategory,
-            location: validatedData.location as CampusLocation,
-            user_id: user.id,
-            user: {
-              id: user.id,
-              email: user.email,
-              name: user.name,
-              role: user.role,
-              phone: user.phone,
-              avatar_url: user.avatar_url,
-            },
-          }),
-        })
+      if (!isDbReady) {
+        toast.error("Database is not ready. Run `pnpm db:bootstrap` and refresh.")
+        setIsSubmitting(false)
+        return
+      }
 
-        const json = (await res.json()) as { ok?: boolean; data?: Listing; error?: string }
-        if (!res.ok || !json.ok || !json.data) {
-          throw new Error(json.error || "Failed to create listing")
-        }
-
-        createdListing = json.data
-
-        if (photos.length > 0) {
-          let uploadedPhotoUrls: string[] = []
-          try {
-            uploadedPhotoUrls = await uploadListingImages(photos, {
-              userId: user.id,
-              listingId: createdListing.id,
-              strict: true,
-            })
-          } catch (error) {
-            await fetch(`/api/listings/${createdListing.id}`, { method: "DELETE" }).catch(
-              () => {}
-            )
-            throw error
-          }
-
-          if (uploadedPhotoUrls.length > 0) {
-            const patchRes = await fetch(`/api/listings/${createdListing.id}`, {
-              method: "PATCH",
-              headers: { "content-type": "application/json" },
-              body: JSON.stringify({ photoUrls: uploadedPhotoUrls }),
-            })
-
-            const patchJson = (await patchRes.json()) as {
-              ok?: boolean
-              data?: Listing
-              error?: string
-            }
-            if (!patchRes.ok || !patchJson.ok || !patchJson.data) {
-              throw new Error(patchJson.error || "Failed to attach listing photos")
-            }
-
-            createdListing = patchJson.data
-          }
-        }
-      } else {
-        const uploadedPhotoUrls = await uploadListingImages(photos)
-        createdListing = lostFoundService.createListing({
+      const res = await fetch("/api/listings", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
           ...validatedData,
           category: validatedData.category as ItemCategory,
           location: validatedData.location as CampusLocation,
           user_id: user.id,
-          photoUrls: uploadedPhotoUrls,
-        })
+          user: {
+            id: user.id,
+            email: user.email,
+            name: user.name,
+            role: user.role,
+            phone: user.phone,
+            avatar_url: user.avatar_url,
+          },
+        }),
+      })
+
+      const json = (await res.json()) as { ok?: boolean; data?: Listing; error?: string }
+      if (!res.ok || !json.ok || !json.data) {
+        throw new Error(json.error || "Failed to create listing")
+      }
+
+      createdListing = json.data
+
+      if (photos.length > 0) {
+        let uploadedPhotoUrls: string[] = []
+        try {
+          uploadedPhotoUrls = await uploadListingImages(photos, {
+            userId: user.id,
+            listingId: createdListing.id,
+            strict: true,
+          })
+        } catch (error) {
+          await fetch(`/api/listings/${createdListing.id}`, {
+            method: "DELETE",
+            headers: {
+              "x-user-id": user.id,
+              "x-user-role": user.role,
+            },
+          }).catch(() => {})
+          throw error
+        }
+
+        if (uploadedPhotoUrls.length > 0) {
+          const patchRes = await fetch(`/api/listings/${createdListing.id}`, {
+            method: "PATCH",
+            headers: {
+              "content-type": "application/json",
+              "x-user-id": user.id,
+              "x-user-role": user.role,
+            },
+            body: JSON.stringify({ photoUrls: uploadedPhotoUrls }),
+          })
+
+          const patchJson = (await patchRes.json()) as {
+            ok?: boolean
+            data?: Listing
+            error?: string
+          }
+          if (!patchRes.ok || !patchJson.ok || !patchJson.data) {
+            throw new Error(patchJson.error || "Failed to attach listing photos")
+          }
+
+          createdListing = patchJson.data
+        }
       }
 
       const itemType = activeTab === "lost" ? "Lost" : "Found"

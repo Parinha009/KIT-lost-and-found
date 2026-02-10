@@ -2,7 +2,8 @@
 
 import React from "react"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useCallback } from "react"
+import Image from "next/image"
 import Link from "next/link"
 import { useAuth } from "@/lib/auth-context"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -29,11 +30,8 @@ import {
   FileText,
   AlertTriangle,
 } from "lucide-react"
-import {
-  getLostFoundWebService,
-} from "@/lib/services/lost-found-service"
 import { formatDateTime, formatDistanceToNow } from "@/lib/date-utils"
-import type { Claim, ClaimStatus } from "@/lib/types"
+import type { Claim, ClaimStatus, Listing, User } from "@/lib/types"
 import { toast } from "sonner"
 
 const statusColors: Record<ClaimStatus, string> = {
@@ -48,8 +46,6 @@ const statusIcons: Record<ClaimStatus, React.ReactNode> = {
   rejected: <XCircle className="w-4 h-4" />,
 }
 
-const lostFoundService = getLostFoundWebService()
-
 export default function ClaimsPage() {
   const { user } = useAuth()
   const [claims, setClaims] = useState<Claim[]>([])
@@ -59,20 +55,36 @@ export default function ClaimsPage() {
   const [handoverNotes, setHandoverNotes] = useState("")
   const [isProcessing, setIsProcessing] = useState(false)
 
+  const refreshClaims = useCallback(async () => {
+    if (!user) {
+      setClaims([])
+      return
+    }
+
+    try {
+      const res = await fetch("/api/claims", {
+        cache: "no-store",
+        headers: {
+          "x-user-id": user.id,
+          "x-user-role": user.role,
+        },
+      })
+
+      const json = (await res.json()) as { ok?: boolean; data?: Claim[]; error?: string }
+      if (!res.ok || !json.ok) {
+        throw new Error(json.error || "Failed to load claims")
+      }
+
+      setClaims(Array.isArray(json.data) ? json.data : [])
+    } catch (error) {
+      setClaims([])
+      toast.error(error instanceof Error ? error.message : "Failed to load claims")
+    }
+  }, [user])
+
   useEffect(() => {
-    const refreshClaims = () => {
-      setClaims(lostFoundService.getAllClaims())
-    }
-
-    refreshClaims()
-    window.addEventListener("kit-lf-claims-updated", refreshClaims)
-    window.addEventListener("storage", refreshClaims)
-
-    return () => {
-      window.removeEventListener("kit-lf-claims-updated", refreshClaims)
-      window.removeEventListener("storage", refreshClaims)
-    }
-  }, [])
+    void refreshClaims()
+  }, [refreshClaims])
 
   const isStaffOrAdmin = user?.role === "staff" || user?.role === "admin"
 
@@ -85,35 +97,40 @@ export default function ClaimsPage() {
     if (!selectedClaim || !user) return
     setIsProcessing(true)
     try {
-      await new Promise((resolve) => setTimeout(resolve, 500))
-      const updatedClaim = lostFoundService.updateClaimStatus(selectedClaim.id, {
-        status: "approved",
-        reviewer_id: user.id,
-        handover_at: new Date().toISOString(),
-        handover_notes: handoverNotes.trim() || undefined,
+      const res = await fetch(`/api/claims/${selectedClaim.id}`, {
+        method: "PATCH",
+        headers: {
+          "content-type": "application/json",
+          "x-user-id": user.id,
+          "x-user-role": user.role,
+        },
+        body: JSON.stringify({
+          status: "approved",
+          handover_notes: handoverNotes.trim() || undefined,
+          reviewer: {
+            id: user.id,
+            email: user.email,
+            name: user.name,
+            role: user.role,
+            phone: user.phone,
+            avatar_url: user.avatar_url,
+          } satisfies Pick<User, "id" | "email" | "name" | "role" | "phone" | "avatar_url">,
+        }),
       })
 
-      if (!updatedClaim) {
-        toast.error("Unable to approve this claim.")
+      const json = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string }
+      if (!res.ok || !json.ok) {
+        toast.error(json.error || "Unable to approve this claim.")
         return
       }
 
-      lostFoundService.createNotification({
-        user_id: updatedClaim.claimant_id,
-        type: "claim_approved",
-        title: `Claim approved for "${updatedClaim.listing?.title || "your item"}"`,
-        message:
-          `Your claim for "${updatedClaim.listing?.title || "this item"}" was approved.` +
-          " Please coordinate pickup with staff.",
-        related_listing_id: updatedClaim.listing_id,
-        related_claim_id: updatedClaim.id,
-      })
-
-      setClaims(lostFoundService.getAllClaims())
+      await refreshClaims()
       toast.success("Claim approved and claimant notified.")
       setActionDialog(null)
       setSelectedClaim(null)
       setHandoverNotes("")
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Unable to approve this claim.")
     } finally {
       setIsProcessing(false)
     }
@@ -123,34 +140,40 @@ export default function ClaimsPage() {
     if (!selectedClaim || !rejectionReason.trim() || !user) return
     setIsProcessing(true)
     try {
-      await new Promise((resolve) => setTimeout(resolve, 500))
-      const updatedClaim = lostFoundService.updateClaimStatus(selectedClaim.id, {
-        status: "rejected",
-        reviewer_id: user.id,
-        rejection_reason: rejectionReason.trim(),
+      const res = await fetch(`/api/claims/${selectedClaim.id}`, {
+        method: "PATCH",
+        headers: {
+          "content-type": "application/json",
+          "x-user-id": user.id,
+          "x-user-role": user.role,
+        },
+        body: JSON.stringify({
+          status: "rejected",
+          rejection_reason: rejectionReason.trim(),
+          reviewer: {
+            id: user.id,
+            email: user.email,
+            name: user.name,
+            role: user.role,
+            phone: user.phone,
+            avatar_url: user.avatar_url,
+          } satisfies Pick<User, "id" | "email" | "name" | "role" | "phone" | "avatar_url">,
+        }),
       })
 
-      if (!updatedClaim) {
-        toast.error("Unable to reject this claim.")
+      const json = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string }
+      if (!res.ok || !json.ok) {
+        toast.error(json.error || "Unable to reject this claim.")
         return
       }
 
-      lostFoundService.createNotification({
-        user_id: updatedClaim.claimant_id,
-        type: "claim_rejected",
-        title: `Claim rejected for "${updatedClaim.listing?.title || "your item"}"`,
-        message:
-          `Your claim for "${updatedClaim.listing?.title || "this item"}" was rejected. ` +
-          `Reason: ${rejectionReason.trim()}`,
-        related_listing_id: updatedClaim.listing_id,
-        related_claim_id: updatedClaim.id,
-      })
-
-      setClaims(lostFoundService.getAllClaims())
+      await refreshClaims()
       toast.success("Claim rejected and claimant notified.")
       setActionDialog(null)
       setSelectedClaim(null)
       setRejectionReason("")
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Unable to reject this claim.")
     } finally {
       setIsProcessing(false)
     }
@@ -169,12 +192,14 @@ export default function ClaimsPage() {
         <CardContent className="p-4">
           <div className="flex items-start gap-4">
             {/* Item thumbnail */}
-            <div className="w-16 h-16 rounded-md bg-muted overflow-hidden shrink-0">
+            <div className="relative w-16 h-16 rounded-md bg-muted overflow-hidden shrink-0">
               {claim.listing?.photos?.[0] ? (
-                <img
+                <Image
                   src={claim.listing.photos[0].url || "/placeholder.svg"}
                   alt={claim.listing.title}
-                  className="w-full h-full object-cover"
+                  fill
+                  sizes="64px"
+                  className="object-cover"
                 />
               ) : (
                 <div className="w-full h-full flex items-center justify-center">

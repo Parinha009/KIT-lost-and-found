@@ -176,6 +176,59 @@ async function main() {
     },
   ]
 
+  const supabaseUrlRaw = process.env.NEXT_PUBLIC_SUPABASE_URL || ""
+  const supabaseUrl = supabaseUrlRaw ? supabaseUrlRaw.replace(/\/+$/, "") : ""
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || ""
+
+  function sanitizeFilename(name) {
+    const trimmed = String(name || "").trim() || "upload"
+    return trimmed.replace(/[^a-zA-Z0-9._-]/g, "_")
+  }
+
+  function encodeStoragePath(objectPath) {
+    return objectPath
+      .split("/")
+      .map((segment) => encodeURIComponent(segment))
+      .join("/")
+  }
+
+  function contentTypeFromName(name) {
+    const lower = String(name || "").toLowerCase()
+    if (lower.endsWith(".png")) return "image/png"
+    if (lower.endsWith(".webp")) return "image/webp"
+    return "image/jpeg"
+  }
+
+  async function uploadLocalImageToStorage({ userId, listingId, publicPath }) {
+    if (!supabaseUrl || !serviceRoleKey) return null
+
+    const rel = publicPath.replace(/^\//, "")
+    const diskPath = path.join(root, "public", rel)
+    if (!fs.existsSync(diskPath)) return null
+
+    const filename = sanitizeFilename(path.basename(rel))
+    const objectPath = `${userId}/${listingId}/seed-${filename}`
+    const encodedPath = encodeStoragePath(objectPath)
+
+    const uploadUrl = `${supabaseUrl}/storage/v1/object/listing-images/${encodedPath}`
+    const body = fs.readFileSync(diskPath)
+
+    const response = await fetch(uploadUrl, {
+      method: "POST",
+      headers: {
+        apikey: serviceRoleKey,
+        authorization: `Bearer ${serviceRoleKey}`,
+        "content-type": contentTypeFromName(filename),
+        "x-upsert": "true",
+      },
+      body,
+    })
+
+    if (!response.ok) return null
+
+    return `${supabaseUrl}/storage/v1/object/public/listing-images/${encodedPath}`
+  }
+
   console.log("Seeding demo users + listings into Supabase (public.users/public.listings/public.photos)...")
 
   try {
@@ -228,7 +281,30 @@ async function main() {
 
       if (!id) continue
 
+      const finalPhotoUrls = []
       for (const url of listing.photos) {
+        if (typeof url !== "string" || !url) continue
+
+        if (url.startsWith("/")) {
+          const uploaded = await uploadLocalImageToStorage({
+            userId: listing.user_id,
+            listingId: id,
+            publicPath: url,
+          })
+          finalPhotoUrls.push(uploaded || url)
+          continue
+        }
+
+        finalPhotoUrls.push(url)
+      }
+
+      await sql`
+        update public.listings
+        set image_urls = ${finalPhotoUrls}
+        where id = ${id}
+      `
+
+      for (const url of finalPhotoUrls) {
         const photoExists =
           await sql`select id from public.photos where listing_id = ${id} and url = ${url} limit 1`
         if (Array.isArray(photoExists) && photoExists.length > 0) continue
@@ -250,4 +326,3 @@ main().catch((error) => {
   console.error(error)
   process.exitCode = 1
 })
-

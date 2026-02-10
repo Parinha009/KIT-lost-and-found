@@ -1,6 +1,7 @@
 "use client"
 
 import Link from "next/link"
+import { useEffect, useMemo, useState } from "react"
 import { useAuth } from "@/lib/auth-context"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -15,12 +16,89 @@ import {
   MapPin,
   Calendar,
 } from "lucide-react"
-import { mockDashboardStats, mockListings } from "@/lib/mock-data"
+import type { Claim, Listing } from "@/lib/types"
 import { formatDistanceToNow } from "@/lib/date-utils"
 
 export default function DashboardPage() {
   const { user } = useAuth()
-  const stats = mockDashboardStats
+  const [listings, setListings] = useState<Listing[]>([])
+  const [pendingClaimsCount, setPendingClaimsCount] = useState(0)
+  const [loadError, setLoadError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!user) return
+
+    const actor = user
+    const actorHeaders: Record<string, string> = {
+      "x-user-id": actor.id,
+      "x-user-role": actor.role,
+    }
+
+    let cancelled = false
+
+    async function load() {
+      try {
+        const [listingsRes, claimsRes] = await Promise.all([
+          fetch("/api/listings", { cache: "no-store" }),
+          fetch("/api/claims?status=pending", { cache: "no-store", headers: actorHeaders }),
+        ])
+
+        const listingsJson = (await listingsRes.json().catch(() => ({}))) as {
+          ok?: boolean
+          data?: Listing[]
+          error?: string
+        }
+        if (!listingsRes.ok || !listingsJson.ok) {
+          throw new Error(listingsJson.error || "Failed to load listings")
+        }
+
+        const claimsJson = (await claimsRes.json().catch(() => ({}))) as {
+          ok?: boolean
+          data?: Claim[]
+          error?: string
+        }
+        if (!claimsRes.ok || !claimsJson.ok) {
+          throw new Error(claimsJson.error || "Failed to load claims")
+        }
+
+        const nextListings = Array.isArray(listingsJson.data) ? listingsJson.data : []
+        const nextClaims = Array.isArray(claimsJson.data) ? claimsJson.data : []
+
+        if (!cancelled) {
+          setLoadError(null)
+          setListings(nextListings)
+          setPendingClaimsCount(nextClaims.filter((c) => c.status === "pending").length)
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setListings([])
+          setPendingClaimsCount(0)
+          setLoadError(error instanceof Error ? error.message : "Failed to load dashboard data")
+        }
+      }
+    }
+
+    void load()
+    return () => {
+      cancelled = true
+    }
+  }, [user, user?.id, user?.role])
+
+  const stats = useMemo(() => {
+    const totalLost = listings.filter((l) => l.type === "lost").length
+    const totalFound = listings.filter((l) => l.type === "found").length
+    const totalMatched = listings.filter((l) => l.status === "matched").length
+    const totalClaimed = listings.filter((l) => l.status === "claimed").length
+
+    return {
+      total_lost: totalLost,
+      total_found: totalFound,
+      total_matched: totalMatched,
+      total_claimed: totalClaimed,
+      pending_claims: pendingClaimsCount,
+      recent_listings: listings.slice(0, 3),
+    }
+  }, [listings, pendingClaimsCount])
 
   const statCards = [
     {
@@ -107,6 +185,12 @@ export default function DashboardPage() {
         ))}
       </div>
 
+      {loadError && (
+        <Card className="border-destructive/30 bg-destructive/5">
+          <CardContent className="p-4 text-sm text-destructive">{loadError}</CardContent>
+        </Card>
+      )}
+
       {/* Quick Actions */}
       <div className="grid gap-4 md:grid-cols-2">
         <Card>
@@ -152,7 +236,7 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
-              {mockListings.slice(0, 3).map((listing) => (
+              {stats.recent_listings.map((listing) => (
                 <Link
                   key={listing.id}
                   href={`/listings/${listing.id}`}

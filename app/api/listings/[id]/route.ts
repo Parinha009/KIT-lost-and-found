@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
-import { desc, eq } from "drizzle-orm"
+import { and, desc, eq } from "drizzle-orm"
 import { getDbOrNull, dbSchema } from "@/lib/db"
-import type { Listing, User } from "@/lib/types"
+import type { Listing, User, UserRole } from "@/lib/types"
 
 function mapStatus(status: string): Listing["status"] {
   if (
@@ -24,6 +24,17 @@ function jsonError(message: string, status = 400) {
   return NextResponse.json({ ok: false, error: message }, { status })
 }
 
+function isUserRole(value: string | null): value is UserRole {
+  return value === "student" || value === "staff" || value === "admin"
+}
+
+function getActor(request: Request): { id: string; role: UserRole } | null {
+  const id = request.headers.get("x-user-id")
+  const role = request.headers.get("x-user-role")
+  if (!id || !isUserRole(role)) return null
+  return { id, role }
+}
+
 type UpdateListingBody = {
   title?: string
   description?: string
@@ -35,6 +46,7 @@ type UpdateListingBody = {
   storage_location?: string
   storage_details?: string
   photoUrls?: string[]
+  matched_listing_id?: string
 }
 
 async function getListingById(id: string): Promise<Listing | null> {
@@ -87,6 +99,12 @@ async function getListingById(id: string): Promise<Listing | null> {
     status: mapStatus(row.status),
     storage_location: row.storageLocation || undefined,
     storage_details: row.storageDetails || undefined,
+    matched_listing_id: row.matchedListingId || undefined,
+    image_urls: Array.isArray(row.imageUrls)
+      ? row.imageUrls.filter(
+          (value: unknown): value is string => typeof value === "string" && value.length > 0
+        )
+      : [],
     user_id: row.userId,
     user,
     photos: photos.map((photo) => ({
@@ -122,6 +140,9 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
   const db = getDbOrNull()
   if (!db) return jsonError("Database not configured", 503)
 
+  const actor = getActor(request)
+  if (!actor) return jsonError("Unauthorized", 401)
+
   let body: UpdateListingBody
   try {
     body = (await request.json()) as UpdateListingBody
@@ -130,29 +151,101 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
   }
 
   const now = new Date()
+
+  const [existing] = await db
+    .select({
+      id: dbSchema.listings.id,
+      userId: dbSchema.listings.userId,
+      status: dbSchema.listings.status,
+    })
+    .from(dbSchema.listings)
+    .where(eq(dbSchema.listings.id, id))
+    .limit(1)
+
+  if (!existing) return jsonError("Listing not found", 404)
+
+  const isOwner = existing.userId === actor.id
+  const isStaffOrAdmin = actor.role === "staff" || actor.role === "admin"
+  const canEditFields = (isOwner && existing.status === "active") || isStaffOrAdmin
+
   const update: Record<string, unknown> = { updatedAt: now }
 
-  if (typeof body.title === "string") update.title = body.title.trim()
-  if (typeof body.description === "string") update.description = body.description.trim()
-  if (typeof body.category === "string") update.category = body.category
-  if (typeof body.location === "string") update.location = body.location
-  if (typeof body.location_details === "string")
+  if (typeof body.title === "string") {
+    if (!canEditFields) return jsonError("Forbidden", 403)
+    update.title = body.title.trim()
+  }
+  if (typeof body.description === "string") {
+    if (!canEditFields) return jsonError("Forbidden", 403)
+    update.description = body.description.trim()
+  }
+  if (typeof body.category === "string") {
+    if (!canEditFields) return jsonError("Forbidden", 403)
+    update.category = body.category
+  }
+  if (typeof body.location === "string") {
+    if (!canEditFields) return jsonError("Forbidden", 403)
+    update.location = body.location
+  }
+  if (typeof body.location_details === "string") {
+    if (!canEditFields) return jsonError("Forbidden", 403)
     update.locationDetails = body.location_details.trim() || null
-  if (typeof body.storage_location === "string")
+  }
+  if (typeof body.storage_location === "string") {
+    if (!isStaffOrAdmin) return jsonError("Forbidden", 403)
     update.storageLocation = body.storage_location.trim() || null
-  if (typeof body.storage_details === "string")
+  }
+  if (typeof body.storage_details === "string") {
+    if (!isStaffOrAdmin) return jsonError("Forbidden", 403)
     update.storageDetails = body.storage_details.trim() || null
-  if (typeof body.date_occurred === "string") update.dateOccurred = new Date(body.date_occurred)
-  if (typeof body.status === "string") update.status = body.status
+  }
+  if (typeof body.date_occurred === "string") {
+    if (!canEditFields) return jsonError("Forbidden", 403)
+    update.dateOccurred = new Date(body.date_occurred)
+  }
+  if (typeof body.status === "string") {
+    if (!isStaffOrAdmin) return jsonError("Forbidden", 403)
+    update.status = body.status
+  }
+
+  if (typeof body.matched_listing_id === "string") {
+    if (!isStaffOrAdmin) return jsonError("Forbidden", 403)
+    update.matchedListingId = body.matched_listing_id.trim() || null
+  }
 
   try {
-    const [updated] = await db
-      .update(dbSchema.listings)
-      .set(update)
-      .where(eq(dbSchema.listings.id, id))
-      .returning()
+    // Special case: if staff marks this as matched, link the other listing too.
+    if (
+      body.status === "matched" &&
+      typeof body.matched_listing_id === "string" &&
+      body.matched_listing_id.trim()
+    ) {
+      const otherId = body.matched_listing_id.trim()
+      const [other] = await db
+        .select({ id: dbSchema.listings.id })
+        .from(dbSchema.listings)
+        .where(eq(dbSchema.listings.id, otherId))
+        .limit(1)
 
-    if (!updated) return jsonError("Listing not found", 404)
+      if (!other) return jsonError("Matched listing not found", 404)
+
+      await db
+        .update(dbSchema.listings)
+        .set({ status: "matched", matchedListingId: otherId, updatedAt: now })
+        .where(eq(dbSchema.listings.id, id))
+
+      await db
+        .update(dbSchema.listings)
+        .set({ status: "matched", matchedListingId: id, updatedAt: now })
+        .where(eq(dbSchema.listings.id, otherId))
+    } else {
+      const [updated] = await db
+        .update(dbSchema.listings)
+        .set(update)
+        .where(eq(dbSchema.listings.id, id))
+        .returning()
+
+      if (!updated) return jsonError("Listing not found", 404)
+    }
 
     if (Array.isArray(body.photoUrls)) {
       const urls = body.photoUrls.filter(
@@ -160,6 +253,11 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
       )
 
       await db.delete(dbSchema.photos).where(eq(dbSchema.photos.listingId, id))
+
+      await db
+        .update(dbSchema.listings)
+        .set({ imageUrls: urls, updatedAt: now })
+        .where(eq(dbSchema.listings.id, id))
 
       if (urls.length > 0) {
         await db.insert(dbSchema.photos).values(
@@ -181,21 +279,45 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
   }
 }
 
-export async function DELETE(_: Request, context: { params: Promise<{ id: string }> }) {
+export async function DELETE(request: Request, context: { params: Promise<{ id: string }> }) {
   const { id } = await context.params
   if (!id) return jsonError("Missing listing id", 422)
 
   const db = getDbOrNull()
   if (!db) return jsonError("Database not configured", 503)
 
+  const actor = getActor(request)
+  if (!actor) return jsonError("Unauthorized", 401)
+
   try {
     const existing = await db
-      .select({ id: dbSchema.listings.id })
+      .select({ id: dbSchema.listings.id, userId: dbSchema.listings.userId, status: dbSchema.listings.status })
       .from(dbSchema.listings)
       .where(eq(dbSchema.listings.id, id))
       .limit(1)
 
     if (existing.length === 0) return jsonError("Listing not found", 404)
+
+    const row = existing[0]
+    const isStaffOrAdmin = actor.role === "staff" || actor.role === "admin"
+    const isOwner = row.userId === actor.id
+
+    if (!isStaffOrAdmin) {
+      if (!isOwner) return jsonError("Forbidden", 403)
+      if (row.status !== "active") {
+        return jsonError("You can only delete active listings", 409)
+      }
+
+      const approved = await db
+        .select({ id: dbSchema.claims.id })
+        .from(dbSchema.claims)
+        .where(and(eq(dbSchema.claims.listingId, id), eq(dbSchema.claims.status, "approved")))
+        .limit(1)
+
+      if (approved.length > 0) {
+        return jsonError("You cannot delete a listing with an approved claim", 409)
+      }
+    }
 
     await db.delete(dbSchema.listings).where(eq(dbSchema.listings.id, id))
     return NextResponse.json({ ok: true })

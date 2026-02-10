@@ -14,15 +14,9 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
 import { ListingCard } from "@/components/listing-card"
-import {
-  getLostFoundWebService,
-  LOST_FOUND_LISTINGS_UPDATED_EVENT,
-} from "@/lib/services/lost-found-service"
 import type { Listing } from "@/lib/types"
 import { ITEM_CATEGORIES, CAMPUS_LOCATIONS } from "@/lib/types"
 import { Search, Filter, X, Package } from "lucide-react"
-
-const lostFoundService = getLostFoundWebService()
 
 function ListingsPageContent() {
   const searchParams = useSearchParams()
@@ -30,7 +24,6 @@ function ListingsPageContent() {
   const createdListingId = searchParams.get("created")
   const defaultStatusFilter = "all"
 
-  const [isDbReady, setIsDbReady] = useState(false)
   const [search, setSearch] = useState("")
   const [typeFilter, setTypeFilter] = useState<string>("all")
   const [categoryFilter, setCategoryFilter] = useState<string>("all")
@@ -38,59 +31,27 @@ function ListingsPageContent() {
   const [statusFilter, setStatusFilter] = useState<string>(defaultStatusFilter)
   const [showFilters, setShowFilters] = useState(false)
   const [allListings, setAllListings] = useState<Listing[]>([])
-
-  useEffect(() => {
-    let cancelled = false
-
-    async function checkDb() {
-      try {
-        const res = await fetch("/api/health/db", { cache: "no-store" })
-        if (!cancelled) setIsDbReady(res.ok)
-      } catch {
-        if (!cancelled) setIsDbReady(false)
-      }
-    }
-
-    checkDb()
-    return () => {
-      cancelled = true
-    }
-  }, [])
+  const [loadError, setLoadError] = useState<string | null>(null)
 
   const refreshListings = useCallback(async () => {
-    if (!isDbReady) {
-      setAllListings(lostFoundService.getListings())
-      return
-    }
-
     try {
       const res = await fetch("/api/listings", { cache: "no-store" })
-      const json = (await res.json()) as { data?: Listing[] }
+      const json = (await res.json()) as { ok?: boolean; data?: Listing[]; error?: string }
+      if (!res.ok || !json.ok) {
+        throw new Error(json.error || "Failed to load listings")
+      }
+
+      setLoadError(null)
       setAllListings(Array.isArray(json.data) ? json.data : [])
-    } catch {
+    } catch (error) {
       setAllListings([])
+      setLoadError(error instanceof Error ? error.message : "Failed to load listings")
     }
-  }, [isDbReady])
+  }, [])
 
   useEffect(() => {
     refreshListings()
   }, [refreshListings, successMessage, createdListingId])
-
-  useEffect(() => {
-    if (isDbReady) return
-
-    const handler = () => {
-      void refreshListings()
-    }
-
-    window.addEventListener(LOST_FOUND_LISTINGS_UPDATED_EVENT, handler)
-    window.addEventListener("storage", handler)
-
-    return () => {
-      window.removeEventListener(LOST_FOUND_LISTINGS_UPDATED_EVENT, handler)
-      window.removeEventListener("storage", handler)
-    }
-  }, [refreshListings, isDbReady])
 
   const filteredListings = useMemo(() => {
     return allListings.filter((listing) => {
@@ -145,6 +106,12 @@ function ListingsPageContent() {
               Your item has been successfully reported!
             </span>
           </CardContent>
+        </Card>
+      )}
+
+      {loadError && (
+        <Card className="border-destructive/30 bg-destructive/5">
+          <CardContent className="p-4 text-sm text-destructive">{loadError}</CardContent>
         </Card>
       )}
 

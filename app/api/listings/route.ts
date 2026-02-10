@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server"
 import { desc, inArray, eq } from "drizzle-orm"
-import { getListings as getLocalListings } from "@/lib/items"
 import { getDbOrNull, dbSchema } from "@/lib/db"
 import type { Listing, ListingFilters, User } from "@/lib/types"
 import { createListingSchema } from "@/lib/validators"
@@ -43,6 +42,7 @@ function applySearchFilters(listings: Listing[], filters: ListingFilters): Listi
 
 export async function GET(request: Request) {
   const url = new URL(request.url)
+  const userId = url.searchParams.get("userId") || undefined
   const filters: ListingFilters = {
     search: url.searchParams.get("search") || undefined,
     type: (url.searchParams.get("type") as ListingFilters["type"]) || undefined,
@@ -53,17 +53,16 @@ export async function GET(request: Request) {
 
   const db = getDbOrNull()
   if (!db) {
-    return NextResponse.json({
-      source: "local-fallback",
-      data: getLocalListings(filters),
-    })
+    return NextResponse.json(
+      { ok: false, error: "Database not configured" },
+      { status: 503 }
+    )
   }
 
   try {
-    const rows = await db
-      .select()
-      .from(dbSchema.listings)
-      .orderBy(desc(dbSchema.listings.createdAt))
+    const where = userId ? eq(dbSchema.listings.userId, userId) : undefined
+
+    const rows = await db.select().from(dbSchema.listings).where(where).orderBy(desc(dbSchema.listings.createdAt))
 
     const photoRows = await db.select().from(dbSchema.photos)
     const userIds = [...new Set(rows.map((row) => row.userId))]
@@ -96,6 +95,12 @@ export async function GET(request: Request) {
         status: mapStatus(row.status),
         storage_location: row.storageLocation || undefined,
         storage_details: row.storageDetails || undefined,
+        matched_listing_id: row.matchedListingId || undefined,
+        image_urls: Array.isArray(row.imageUrls)
+          ? row.imageUrls.filter(
+              (value: unknown): value is string => typeof value === "string" && value.length > 0
+            )
+          : [],
         user_id: row.userId,
         user: rowUser
           ? {
@@ -122,15 +127,12 @@ export async function GET(request: Request) {
     })
 
     return NextResponse.json({
+      ok: true,
       source: "supabase-postgres-drizzle",
       data: applySearchFilters(mapped, filters),
     })
   } catch {
-    return NextResponse.json({
-      source: "local-fallback",
-      data: getLocalListings(filters),
-      warning: "Database schema not ready. Create tables in Supabase to enable DB mode.",
-    })
+    return NextResponse.json({ ok: false, error: "Failed to load listings" }, { status: 500 })
   }
 }
 
@@ -185,7 +187,6 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         ok: false,
-        source: "local-fallback",
         error:
           "Database not configured. This endpoint requires SUPABASE_DB_URL/DATABASE_URL to be set.",
       },
@@ -197,6 +198,12 @@ export async function POST(request: Request) {
     const now = new Date()
 
     const user = body.user
+    const role = user?.role
+
+    if (parsed.data.type === "found" && role !== "staff" && role !== "admin") {
+      return jsonError("Only staff can register found items", 403)
+    }
+
     if (user?.id && user.email && user.name && user.role) {
       const existing = await db
         .select({ id: dbSchema.users.id })
@@ -219,6 +226,10 @@ export async function POST(request: Request) {
       }
     }
 
+    const urls = Array.isArray(body.photoUrls)
+      ? body.photoUrls.filter((url): url is string => typeof url === "string" && url.length > 0)
+      : []
+
     const [created] = await db
       .insert(dbSchema.listings)
       .values({
@@ -233,14 +244,12 @@ export async function POST(request: Request) {
         storageLocation: parsed.data.storage_location || null,
         storageDetails: parsed.data.storage_details || null,
         userId: body.user_id,
+        matchedListingId: null,
+        imageUrls: urls,
         createdAt: now,
         updatedAt: now,
       })
       .returning()
-
-    const urls = Array.isArray(body.photoUrls)
-      ? body.photoUrls.filter((url): url is string => typeof url === "string" && url.length > 0)
-      : []
 
     const createdPhotos =
       urls.length > 0
@@ -270,6 +279,8 @@ export async function POST(request: Request) {
       status: mapStatus(created.status),
       storage_location: created.storageLocation || undefined,
       storage_details: created.storageDetails || undefined,
+      matched_listing_id: created.matchedListingId || undefined,
+      image_urls: urls,
       user_id: created.userId,
       user: listingUser
         ? {

@@ -54,6 +54,11 @@ export const listings = pgTable("listings", {
   userId: uuid("user_id")
     .notNull()
     .references(() => users.id, { onDelete: "restrict" }),
+  matchedListingId: uuid("matched_listing_id"),
+  imageUrls: text("image_urls")
+    .array()
+    .notNull()
+    .default(sql`'{}'::text[]`),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 })

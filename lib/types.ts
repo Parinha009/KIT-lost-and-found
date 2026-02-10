@@ -62,6 +62,8 @@ export interface Listing {
   status: ListingStatus
   storage_location?: string
   storage_details?: string
+  matched_listing_id?: string
+  image_urls?: string[]
   user_id: string
   user?: User
   photos: Photo[]

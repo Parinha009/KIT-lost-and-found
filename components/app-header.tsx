@@ -28,7 +28,6 @@ import {
   Shield,
 } from "lucide-react"
 import { useEffect, useState } from "react"
-import { getLostFoundWebService } from "@/lib/services/lost-found-service"
 import { cn } from "@/lib/utils"
 
 const navigation = [
@@ -37,8 +36,6 @@ const navigation = [
   { name: "Report Item", href: "/report", icon: FilePlus },
   { name: "Messages", href: "/messages", icon: MessageSquare },
 ]
-
-const lostFoundService = getLostFoundWebService()
 
 export function AppHeader() {
   const pathname = usePathname()
@@ -53,17 +50,38 @@ export function AppHeader() {
       return
     }
 
-    const refreshUnreadCount = () => {
-      setUnreadCount(lostFoundService.getUnreadNotificationCount(user.id))
+    const actor = user
+    let cancelled = false
+
+    async function refreshUnreadCount() {
+      try {
+        const res = await fetch(`/api/notifications?userId=${encodeURIComponent(actor.id)}`, {
+          cache: "no-store",
+          headers: {
+            "x-user-id": actor.id,
+            "x-user-role": actor.role,
+          },
+        })
+
+        const json = (await res.json().catch(() => ({}))) as {
+          ok?: boolean
+          unreadCount?: number
+        }
+
+        if (!cancelled) {
+          setUnreadCount(res.ok && json.ok && typeof json.unreadCount === "number" ? json.unreadCount : 0)
+        }
+      } catch {
+        if (!cancelled) setUnreadCount(0)
+      }
     }
 
-    refreshUnreadCount()
-    window.addEventListener("kit-lf-notifications-updated", refreshUnreadCount)
-    window.addEventListener("storage", refreshUnreadCount)
+    void refreshUnreadCount()
+    const interval = window.setInterval(refreshUnreadCount, 15_000)
 
     return () => {
-      window.removeEventListener("kit-lf-notifications-updated", refreshUnreadCount)
-      window.removeEventListener("storage", refreshUnreadCount)
+      cancelled = true
+      window.clearInterval(interval)
     }
   }, [user, pathname])
 

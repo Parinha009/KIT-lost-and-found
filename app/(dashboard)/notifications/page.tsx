@@ -16,14 +16,11 @@ import {
   Link2,
   MessageSquare,
   AlertCircle,
-  Package,
   Inbox,
 } from "lucide-react"
-import {
-  getLostFoundWebService,
-} from "@/lib/services/lost-found-service"
 import { formatDistanceToNow } from "@/lib/date-utils"
 import type { Notification, NotificationType } from "@/lib/types"
+import { toast } from "sonner"
 
 const notificationIcons: Record<NotificationType, React.ReactNode> = {
   match: <Link2 className="w-4 h-4" />,
@@ -41,8 +38,6 @@ const notificationColors: Record<NotificationType, string> = {
   system: "bg-muted text-muted-foreground",
 }
 
-const lostFoundService = getLostFoundWebService()
-
 export default function NotificationsPage() {
   const { user } = useAuth()
   const [notifications, setNotifications] = useState<Notification[]>([])
@@ -53,17 +48,41 @@ export default function NotificationsPage() {
       return
     }
 
-    const refreshNotifications = () => {
-      setNotifications(lostFoundService.getUserNotifications(user.id))
+    const actor = user
+    let cancelled = false
+
+    async function refreshNotifications() {
+      try {
+        const res = await fetch(`/api/notifications?userId=${encodeURIComponent(actor.id)}`, {
+          cache: "no-store",
+          headers: {
+            "x-user-id": actor.id,
+            "x-user-role": actor.role,
+          },
+        })
+
+        const json = (await res.json().catch(() => ({}))) as {
+          ok?: boolean
+          data?: Notification[]
+          error?: string
+        }
+
+        if (!res.ok || !json.ok) {
+          throw new Error(json.error || "Failed to load notifications")
+        }
+
+        if (!cancelled) setNotifications(Array.isArray(json.data) ? json.data : [])
+      } catch (error) {
+        if (!cancelled) {
+          setNotifications([])
+          toast.error(error instanceof Error ? error.message : "Failed to load notifications")
+        }
+      }
     }
 
-    refreshNotifications()
-    window.addEventListener("kit-lf-notifications-updated", refreshNotifications)
-    window.addEventListener("storage", refreshNotifications)
-
+    void refreshNotifications()
     return () => {
-      window.removeEventListener("kit-lf-notifications-updated", refreshNotifications)
-      window.removeEventListener("storage", refreshNotifications)
+      cancelled = true
     }
   }, [user])
 
@@ -72,18 +91,54 @@ export default function NotificationsPage() {
 
   const markAsRead = (id: string) => {
     if (!user) return
-    const updated = lostFoundService.markNotificationAsRead(id)
-    if (updated) {
-      setNotifications(lostFoundService.getUserNotifications(user.id))
-    }
+    const actor = user
+
+    void (async () => {
+      try {
+        const res = await fetch(`/api/notifications/${encodeURIComponent(id)}`, {
+          method: "PATCH",
+          headers: {
+            "x-user-id": actor.id,
+            "x-user-role": actor.role,
+          },
+        })
+
+        const json = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string }
+        if (!res.ok || !json.ok) throw new Error(json.error || "Failed to update notification")
+
+        setNotifications((prev) =>
+          prev.map((n) => (n.id === id ? { ...n, is_read: true } : n))
+        )
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Failed to update notification")
+      }
+    })()
   }
 
   const markAllAsRead = () => {
     if (!user) return
-    const updatedCount = lostFoundService.markAllNotificationsAsRead(user.id)
-    if (updatedCount > 0) {
-      setNotifications(lostFoundService.getUserNotifications(user.id))
-    }
+    const actor = user
+
+    void (async () => {
+      try {
+        const res = await fetch("/api/notifications", {
+          method: "PATCH",
+          headers: {
+            "content-type": "application/json",
+            "x-user-id": actor.id,
+            "x-user-role": actor.role,
+          },
+          body: JSON.stringify({ user_id: actor.id }),
+        })
+
+        const json = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string }
+        if (!res.ok || !json.ok) throw new Error(json.error || "Failed to update notifications")
+
+        setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })))
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Failed to update notifications")
+      }
+    })()
   }
 
   const NotificationItem = ({ notification }: { notification: Notification }) => {

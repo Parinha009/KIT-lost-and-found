@@ -138,9 +138,21 @@ async function main() {
         storage_location text,
         storage_details text,
         user_id uuid not null references public.users(id) on delete restrict,
+        matched_listing_id uuid references public.listings(id) on delete set null,
+        image_urls text[] not null default '{}'::text[],
         created_at timestamptz not null default now(),
         updated_at timestamptz not null default now()
       )
+    `
+
+    // Keep schema forward-compatible if the table was created before these columns existed.
+    await sql`
+      alter table public.listings
+        add column if not exists matched_listing_id uuid references public.listings(id) on delete set null
+    `
+    await sql`
+      alter table public.listings
+        add column if not exists image_urls text[] not null default '{}'::text[]
     `
     await sql`create index if not exists listings_user_id_idx on public.listings(user_id)`
 
@@ -189,6 +201,33 @@ async function main() {
     await sql`create index if not exists notifications_user_id_idx on public.notifications(user_id)`
 
     console.log("Done. Tables are ready: users, listings, photos, claims, notifications.")
+
+    // Supabase Storage bucket (optional, but required for real image uploads).
+    // This uses the Postgres connection, so it does not require the service role key.
+    try {
+      const bucketName = "listing-images"
+      const [{ exists }] =
+        await sql`select to_regclass('storage.buckets') is not null as exists`
+
+      if (exists) {
+        await sql`
+          insert into storage.buckets (id, name, public)
+          values (${bucketName}, ${bucketName}, true)
+          on conflict (id) do update
+          set name = excluded.name, public = excluded.public
+        `
+        console.log(`Done. Storage bucket is ready: storage.buckets("${bucketName}") (public).`)
+      } else {
+        console.log(
+          'Storage bucket not created (storage.buckets table missing). Create bucket "listing-images" manually in Supabase Storage.'
+        )
+      }
+    } catch (error) {
+      console.log(
+        'Storage bucket not created. Create bucket "listing-images" manually in Supabase Storage.'
+      )
+      console.log(String(error))
+    }
   } finally {
     await sql.end({ timeout: 5 })
   }
@@ -198,4 +237,3 @@ main().catch((error) => {
   console.error(error)
   process.exitCode = 1
 })
-

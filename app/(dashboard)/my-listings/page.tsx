@@ -10,76 +10,49 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ListingCard } from "@/components/listing-card"
-import {
-  getLostFoundWebService,
-  LOST_FOUND_LISTINGS_UPDATED_EVENT,
-} from "@/lib/services/lost-found-service"
 import type { Listing } from "@/lib/types"
 import { Plus, Package, Search, FileText } from "lucide-react"
 
-const lostFoundService = getLostFoundWebService()
-
 export default function MyListingsPage() {
   const { user } = useAuth()
-  const [isDbReady, setIsDbReady] = useState(false)
   const [allListings, setAllListings] = useState<Listing[]>([])
-
-  useEffect(() => {
-    let cancelled = false
-
-    async function checkDb() {
-      try {
-        const res = await fetch("/api/health/db", { cache: "no-store" })
-        if (!cancelled) setIsDbReady(res.ok)
-      } catch {
-        if (!cancelled) setIsDbReady(false)
-      }
-    }
-
-    checkDb()
-    return () => {
-      cancelled = true
-    }
-  }, [])
+  const [loadError, setLoadError] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
 
     async function refreshListings() {
-      if (!isDbReady) {
-        setAllListings(lostFoundService.getListings())
+      if (!user) {
+        if (!cancelled) setAllListings([])
         return
       }
 
       try {
-        const res = await fetch("/api/listings", { cache: "no-store" })
-        const json = (await res.json()) as { data?: Listing[] }
-        if (!cancelled) setAllListings(Array.isArray(json.data) ? json.data : [])
-      } catch {
-        if (!cancelled) setAllListings([])
+        const res = await fetch(`/api/listings?userId=${encodeURIComponent(user.id)}`, {
+          cache: "no-store",
+        })
+        const json = (await res.json()) as { ok?: boolean; data?: Listing[]; error?: string }
+        if (!res.ok || !json.ok) {
+          throw new Error(json.error || "Failed to load listings")
+        }
+
+        if (!cancelled) {
+          setLoadError(null)
+          setAllListings(Array.isArray(json.data) ? json.data : [])
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setAllListings([])
+          setLoadError(error instanceof Error ? error.message : "Failed to load listings")
+        }
       }
     }
 
     refreshListings()
-
-    if (!isDbReady) {
-      const handler = () => {
-        void refreshListings()
-      }
-      window.addEventListener(LOST_FOUND_LISTINGS_UPDATED_EVENT, handler)
-      window.addEventListener("storage", handler)
-
-      return () => {
-        cancelled = true
-        window.removeEventListener(LOST_FOUND_LISTINGS_UPDATED_EVENT, handler)
-        window.removeEventListener("storage", handler)
-      }
-    }
-
     return () => {
       cancelled = true
     }
-  }, [isDbReady])
+  }, [user])
 
   const myListings = useMemo(() => {
     return allListings.filter((listing) => listing.user_id === user?.id)
@@ -136,6 +109,12 @@ export default function MyListingsPage() {
           )}
         </div>
       </div>
+
+      {loadError && (
+        <Card className="border-destructive/30 bg-destructive/5">
+          <CardContent className="p-4 text-sm text-destructive">{loadError}</CardContent>
+        </Card>
+      )}
 
       {/* Tabs */}
       <Tabs defaultValue="all">

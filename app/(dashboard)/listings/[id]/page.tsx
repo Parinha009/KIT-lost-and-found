@@ -1,15 +1,12 @@
 "use client"
 
-import { use, useEffect, useMemo, useState } from "react"
+import { use, useEffect, useState } from "react"
 import Image from "next/image"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/lib/auth-context"
 import { createClaimSchema } from "@/lib/validators"
-import {
-  getLostFoundWebService,
-} from "@/lib/services/lost-found-service"
-import type { Listing } from "@/lib/types"
+import type { Claim, Listing, User } from "@/lib/types"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -46,16 +43,16 @@ interface ListingDetailPageProps {
   params: Promise<{ id: string }>
 }
 
-const lostFoundService = getLostFoundWebService()
-
 export default function ListingDetailPage({ params }: ListingDetailPageProps) {
   const resolvedParams = use(params)
   const router = useRouter()
   const { user } = useAuth()
   const [claimDialogOpen, setClaimDialogOpen] = useState(false)
   const [editDialogOpen, setEditDialogOpen] = useState(false)
+  const [matchDialogOpen, setMatchDialogOpen] = useState(false)
   const [claimProof, setClaimProof] = useState("")
   const [refreshKey, setRefreshKey] = useState(0)
+  const [matchedListingId, setMatchedListingId] = useState("")
   const [editForm, setEditForm] = useState({
     title: "",
     description: "",
@@ -63,59 +60,65 @@ export default function ListingDetailPage({ params }: ListingDetailPageProps) {
   })
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isSavingEdit, setIsSavingEdit] = useState(false)
+  const [isSavingMatch, setIsSavingMatch] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
-  const [isDbReady, setIsDbReady] = useState(false)
   const [listing, setListing] = useState<Listing | null>(null)
   const [isLoadingListing, setIsLoadingListing] = useState(true)
-
-  const claims = useMemo(
-    () => (listing ? lostFoundService.getListingClaims(listing.id) : []),
-    [listing, refreshKey]
-  )
+  const [claims, setClaims] = useState<Claim[]>([])
 
   useEffect(() => {
     let cancelled = false
 
-    async function loadListing() {
+    async function loadListingAndClaims() {
       setIsLoadingListing(true)
       try {
-        const health = await fetch("/api/health/db", { cache: "no-store" })
-        const dbReady = health.ok
-        if (!cancelled) setIsDbReady(dbReady)
+        const res = await fetch(`/api/listings/${resolvedParams.id}`, { cache: "no-store" })
+        const json = (await res.json()) as { ok?: boolean; data?: Listing; error?: string }
 
-        if (dbReady) {
-          const res = await fetch(`/api/listings/${resolvedParams.id}`, {
-            cache: "no-store",
-          })
-          const json = (await res.json()) as {
-            ok?: boolean
-            data?: Listing
-            error?: string
-          }
-          if (!cancelled) {
-            setListing(res.ok && json.ok && json.data ? json.data : null)
-          }
+        const nextListing = res.ok && json.ok && json.data ? json.data : null
+        if (!cancelled) setListing(nextListing)
+
+        if (!nextListing || !user) {
+          if (!cancelled) setClaims([])
           return
         }
 
-        if (!cancelled) {
-          setListing(lostFoundService.getListing(resolvedParams.id) ?? null)
+        const claimsRes = await fetch(
+          `/api/claims?listingId=${encodeURIComponent(nextListing.id)}`,
+          {
+            cache: "no-store",
+            headers: {
+              "x-user-id": user.id,
+              "x-user-role": user.role,
+            },
+          }
+        )
+
+        const claimsJson = (await claimsRes.json()) as {
+          ok?: boolean
+          data?: Claim[]
+          error?: string
         }
-      } catch {
+
         if (!cancelled) {
-          setIsDbReady(false)
-          setListing(lostFoundService.getListing(resolvedParams.id) ?? null)
+          setClaims(claimsRes.ok && claimsJson.ok && Array.isArray(claimsJson.data) ? claimsJson.data : [])
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setListing(null)
+          setClaims([])
+          toast.error(error instanceof Error ? error.message : "Failed to load listing")
         }
       } finally {
         if (!cancelled) setIsLoadingListing(false)
       }
     }
 
-    void loadListing()
+    void loadListingAndClaims()
     return () => {
       cancelled = true
     }
-  }, [resolvedParams.id, refreshKey])
+  }, [resolvedParams.id, refreshKey, user])
 
   useEffect(() => {
     if (!listing) return
@@ -151,7 +154,16 @@ export default function ListingDetailPage({ params }: ListingDetailPageProps) {
 
   const isOwner = user?.id === listing.user_id
   const isStaffOrAdmin = user?.role === "staff" || user?.role === "admin"
-  const canManageListing = isOwner && isStaffOrAdmin
+  const actorHeaders: Record<string, string> = user
+    ? {
+        "x-user-id": user.id,
+        "x-user-role": user.role,
+      }
+    : {}
+
+  const canEditListing = Boolean(user && isOwner && listing.status === "active")
+  const canCloseListing = Boolean(user && isStaffOrAdmin && listing.status !== "closed")
+  const canDeleteListing = Boolean(user && (isStaffOrAdmin || (isOwner && listing.status === "active")))
   const userClaims = claims.filter((claim) => claim.claimant_id === user?.id)
   const hasSubmittedClaim = userClaims.length > 0
   const latestUserClaim = [...userClaims].sort(
@@ -175,51 +187,77 @@ export default function ListingDetailPage({ params }: ListingDetailPageProps) {
         proof_description: claimProof,
       })
 
-      const matchResult = lostFoundService.evaluateClaimMatch(listing.id, user.id, claimProof)
-      if (!matchResult.isMatch) {
-        toast.error(
-          matchResult.reasons[0] || "Claim details do not align with this item."
-        )
-        return
-      }
-
-      await new Promise((resolve) => setTimeout(resolve, 500))
-      const createdClaim = lostFoundService.createClaim({
-        listing_id: listing.id,
-        claimant_id: user.id,
-        proof_description: claimProof.trim(),
+      const res = await fetch("/api/claims", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          ...actorHeaders,
+        },
+        body: JSON.stringify({
+          listing_id: listing.id,
+          proof_description: claimProof.trim(),
+          claimant: {
+            id: user.id,
+            email: user.email,
+            name: user.name,
+            role: user.role,
+            phone: user.phone,
+            avatar_url: user.avatar_url,
+          } satisfies Pick<User, "id" | "email" | "name" | "role" | "phone" | "avatar_url">,
+        }),
       })
 
-      if (!createdClaim) {
-        toast.error("You already have a pending claim for this item.")
+      const json = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string }
+      if (!res.ok || !json.ok) {
+        toast.error(json.error || "Unable to submit claim")
         return
       }
-
-      const linkedLostListing = matchResult.linkedLostListingId
-        ? lostFoundService.getListing(matchResult.linkedLostListingId)
-        : undefined
-
-      const linkedLostContext = linkedLostListing
-        ? `Linked lost report: "${linkedLostListing.title}".`
-        : "Claim details were matched directly against this found listing."
-
-      lostFoundService.createNotification({
-        user_id: listing.user_id,
-        type: "claim_submitted",
-        title: `New claim for "${listing.title}"`,
-        message: `${user.name} submitted a claim for "${listing.title}". ${linkedLostContext}`,
-        related_listing_id: listing.id,
-        related_claim_id: createdClaim.id,
-      })
 
       setClaimDialogOpen(false)
       setClaimProof("")
       setRefreshKey((prev) => prev + 1)
       toast.success("Claim submitted and sent to staff review.")
-    } catch {
-      toast.error("Please provide clearer proof (at least 20 characters)")
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Please provide clearer proof (at least 20 characters)")
     } finally {
       setIsSubmitting(false)
+    }
+  }
+
+  const handleMatchListing = async () => {
+    if (!listing || !user) return
+    if (!isStaffOrAdmin) return
+
+    const otherId = matchedListingId.trim()
+    if (!otherId) {
+      toast.error("Enter a listing id to match")
+      return
+    }
+
+    setIsSavingMatch(true)
+    try {
+      const res = await fetch(`/api/listings/${listing.id}`, {
+        method: "PATCH",
+        headers: {
+          "content-type": "application/json",
+          ...actorHeaders,
+        },
+        body: JSON.stringify({ status: "matched", matched_listing_id: otherId }),
+      })
+
+      const json = (await res.json()) as { ok?: boolean; data?: Listing; error?: string }
+      if (!res.ok || !json.ok || !json.data) {
+        toast.error(json.error || "Unable to mark as matched")
+        return
+      }
+
+      setListing(json.data)
+      setMatchDialogOpen(false)
+      setMatchedListingId("")
+      setRefreshKey((prev) => prev + 1)
+      toast.success("Listing marked as matched")
+    } finally {
+      setIsSavingMatch(false)
     }
   }
 
@@ -237,38 +275,23 @@ export default function ListingDetailPage({ params }: ListingDetailPageProps) {
 
     setIsSavingEdit(true)
     try {
-      if (isDbReady) {
-        const res = await fetch(`/api/listings/${listing.id}`, {
-          method: "PATCH",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            title,
-            description,
-            location_details: locationDetails,
-          }),
-        })
-
-        const json = (await res.json()) as { ok?: boolean; data?: Listing; error?: string }
-        if (!res.ok || !json.ok || !json.data) {
-          toast.error(json.error || "Unable to save changes")
-          return
-        }
-
-        setListing(json.data)
-      } else {
-        const updated = lostFoundService.updateListing(listing.id, {
+      const res = await fetch(`/api/listings/${listing.id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json", ...actorHeaders },
+        body: JSON.stringify({
           title,
           description,
-          location_details: locationDetails || undefined,
-        })
+          location_details: locationDetails,
+        }),
+      })
 
-        if (!updated) {
-          toast.error("Unable to save changes")
-          return
-        }
-
-        setListing(updated)
+      const json = (await res.json()) as { ok?: boolean; data?: Listing; error?: string }
+      if (!res.ok || !json.ok || !json.data) {
+        toast.error(json.error || "Unable to save changes")
+        return
       }
+
+      setListing(json.data)
 
       setEditDialogOpen(false)
       setRefreshKey((prev) => prev + 1)
@@ -282,28 +305,19 @@ export default function ListingDetailPage({ params }: ListingDetailPageProps) {
     if (!listing) return
 
     try {
-      if (isDbReady) {
-        const res = await fetch(`/api/listings/${listing.id}`, {
-          method: "PATCH",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ status: "closed" }),
-        })
+      const res = await fetch(`/api/listings/${listing.id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json", ...actorHeaders },
+        body: JSON.stringify({ status: "closed" }),
+      })
 
-        const json = (await res.json()) as { ok?: boolean; data?: Listing; error?: string }
-        if (!res.ok || !json.ok || !json.data) {
-          toast.error(json.error || "Unable to close listing")
-          return
-        }
-
-        setListing(json.data)
-      } else {
-        const updated = lostFoundService.updateListing(listing.id, { status: "closed" })
-        if (!updated) {
-          toast.error("Unable to close listing")
-          return
-        }
-        setListing(updated)
+      const json = (await res.json()) as { ok?: boolean; data?: Listing; error?: string }
+      if (!res.ok || !json.ok || !json.data) {
+        toast.error(json.error || "Unable to close listing")
+        return
       }
+
+      setListing(json.data)
 
       setRefreshKey((prev) => prev + 1)
       toast.success("Listing closed")
@@ -318,20 +332,15 @@ export default function ListingDetailPage({ params }: ListingDetailPageProps) {
 
     setIsDeleting(true)
     try {
-      if (isDbReady) {
-        const res = await fetch(`/api/listings/${listing.id}`, { method: "DELETE" })
-        const json = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string }
+      const res = await fetch(`/api/listings/${listing.id}`, {
+        method: "DELETE",
+        headers: actorHeaders,
+      })
+      const json = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string }
 
-        if (!res.ok || !json.ok) {
-          toast.error(json.error || "Unable to delete listing")
-          return
-        }
-      } else {
-        const deleted = lostFoundService.deleteListing(listing.id)
-        if (!deleted) {
-          toast.error("Unable to delete listing")
-          return
-        }
+      if (!res.ok || !json.ok) {
+        toast.error(json.error || "Unable to delete listing")
+        return
       }
 
       toast.success("Listing deleted")
@@ -420,6 +429,14 @@ export default function ListingDetailPage({ params }: ListingDetailPageProps) {
                       {listing.status}
                     </Badge>
                   </div>
+                  {listing.status === "matched" && listing.matched_listing_id && (
+                    <Link
+                      href={`/listings/${listing.matched_listing_id}`}
+                      className="mt-2 inline-block text-sm text-primary hover:underline"
+                    >
+                      View matched listing
+                    </Link>
+                  )}
                 </div>
               </div>
             </CardHeader>
@@ -644,99 +661,137 @@ export default function ListingDetailPage({ params }: ListingDetailPageProps) {
                 </div>
               )}
 
-              {isOwner && user?.role === "student" && (
-                <div className="p-3 bg-muted rounded-md text-sm text-muted-foreground text-center">
-                  Listing updates, closure, and deletion are managed by staff or admin.
-                </div>
+              {canEditListing && (
+                <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+                  <DialogTrigger asChild>
+                    <Button variant="outline" className="w-full bg-transparent">
+                      Edit Listing
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Edit Listing</DialogTitle>
+                      <DialogDescription>
+                        Update the listing details shown to campus users.
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4 py-2">
+                      <div className="space-y-2">
+                        <Label htmlFor="edit-title">Title</Label>
+                        <Input
+                          id="edit-title"
+                          value={editForm.title}
+                          onChange={(event) =>
+                            setEditForm((prev) => ({ ...prev, title: event.target.value }))
+                          }
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="edit-description">Description</Label>
+                        <Textarea
+                          id="edit-description"
+                          rows={4}
+                          value={editForm.description}
+                          onChange={(event) =>
+                            setEditForm((prev) => ({
+                              ...prev,
+                              description: event.target.value,
+                            }))
+                          }
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="edit-location-details">Location Details</Label>
+                        <Input
+                          id="edit-location-details"
+                          value={editForm.locationDetails}
+                          onChange={(event) =>
+                            setEditForm((prev) => ({
+                              ...prev,
+                              locationDetails: event.target.value,
+                            }))
+                          }
+                        />
+                      </div>
+                    </div>
+                    <DialogFooter>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => setEditDialogOpen(false)}
+                        disabled={isSavingEdit}
+                      >
+                        Cancel
+                      </Button>
+                      <Button type="button" onClick={handleSaveEdit} disabled={isSavingEdit}>
+                        {isSavingEdit ? "Saving..." : "Save Changes"}
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
               )}
 
-              {canManageListing && (
-                <>
-                  <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
-                    <DialogTrigger asChild>
-                      <Button variant="outline" className="w-full bg-transparent">
-                        Edit Listing
+              {isStaffOrAdmin && (
+                <Dialog open={matchDialogOpen} onOpenChange={setMatchDialogOpen}>
+                  <DialogTrigger asChild>
+                    <Button variant="outline" className="w-full bg-transparent">
+                      Mark as Matched
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Match Listing</DialogTitle>
+                      <DialogDescription>
+                        Link this listing to another listing (lost to found). This will mark both as matched.
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-2 py-2">
+                      <Label htmlFor="matched-id">Matched Listing ID</Label>
+                      <Input
+                        id="matched-id"
+                        value={matchedListingId}
+                        onChange={(e) => setMatchedListingId(e.target.value)}
+                        placeholder="Paste the other listing id..."
+                      />
+                    </div>
+                    <DialogFooter>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => setMatchDialogOpen(false)}
+                        disabled={isSavingMatch}
+                      >
+                        Cancel
                       </Button>
-                    </DialogTrigger>
-                    <DialogContent>
-                      <DialogHeader>
-                        <DialogTitle>Edit Listing</DialogTitle>
-                        <DialogDescription>
-                          Update the listing details shown to campus users.
-                        </DialogDescription>
-                      </DialogHeader>
-                      <div className="space-y-4 py-2">
-                        <div className="space-y-2">
-                          <Label htmlFor="edit-title">Title</Label>
-                          <Input
-                            id="edit-title"
-                            value={editForm.title}
-                            onChange={(event) =>
-                              setEditForm((prev) => ({ ...prev, title: event.target.value }))
-                            }
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="edit-description">Description</Label>
-                          <Textarea
-                            id="edit-description"
-                            rows={4}
-                            value={editForm.description}
-                            onChange={(event) =>
-                              setEditForm((prev) => ({
-                                ...prev,
-                                description: event.target.value,
-                              }))
-                            }
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="edit-location-details">Location Details</Label>
-                          <Input
-                            id="edit-location-details"
-                            value={editForm.locationDetails}
-                            onChange={(event) =>
-                              setEditForm((prev) => ({
-                                ...prev,
-                                locationDetails: event.target.value,
-                              }))
-                            }
-                          />
-                        </div>
-                      </div>
-                      <DialogFooter>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          onClick={() => setEditDialogOpen(false)}
-                          disabled={isSavingEdit}
-                        >
-                          Cancel
-                        </Button>
-                        <Button type="button" onClick={handleSaveEdit} disabled={isSavingEdit}>
-                          {isSavingEdit ? "Saving..." : "Save Changes"}
-                        </Button>
-                      </DialogFooter>
-                    </DialogContent>
-                  </Dialog>
-                  <Button
-                    variant="outline"
-                    className="w-full bg-transparent"
-                    onClick={handleCloseListing}
-                    disabled={listing.status === "closed"}
-                  >
-                    Close Listing
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="w-full text-destructive bg-transparent"
-                    onClick={handleDeleteListing}
-                    disabled={isDeleting}
-                  >
-                    <Trash2 className="mr-2 h-4 w-4" />
-                    {isDeleting ? "Deleting..." : "Delete Listing"}
-                  </Button>
-                </>
+                      <Button type="button" onClick={handleMatchListing} disabled={isSavingMatch}>
+                        {isSavingMatch ? "Saving..." : "Match"}
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
+              )}
+
+              {canCloseListing && (
+                <Button
+                  variant="outline"
+                  className="w-full bg-transparent"
+                  onClick={handleCloseListing}
+                  disabled={listing.status === "closed"}
+                >
+                  Close Listing
+                </Button>
+              )}
+
+              {canDeleteListing && (
+                <Button
+                  variant="outline"
+                  className="w-full text-destructive bg-transparent"
+                  onClick={handleDeleteListing}
+                  disabled={isDeleting}
+                >
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  {isDeleting ? "Deleting..." : "Delete Listing"}
+                </Button>
               )}
 
               <Button variant="ghost" className="w-full" asChild>
