@@ -199,7 +199,6 @@ function ReportPageContent() {
             uploadedPhotoUrls = await uploadListingImages(photos, {
               userId: user.id,
               listingId: createdListing.id,
-              strict: true,
             })
           } catch (error) {
             await fetch(`/api/listings/${createdListing.id}`, { method: "DELETE" }).catch(
