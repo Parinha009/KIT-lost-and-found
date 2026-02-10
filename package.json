@@ -10,7 +10,8 @@
     "db:generate": "drizzle-kit generate",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
-    "db:bootstrap": "node scripts/bootstrap-supabase-schema.cjs"
+    "db:bootstrap": "node scripts/bootstrap-supabase-schema.cjs",
+    "db:seed": "node scripts/seed-demo-listings.cjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",

@@ -55,6 +55,28 @@ async function uploadToCloudinary(files: File[], cloudName: string, uploadPreset
   return Promise.all(uploadTasks)
 }
 
+async function uploadToAppRoute(files: File[], options?: UploadListingImagesOptions) {
+  const formData = new FormData()
+  if (options?.userId) formData.append("userId", options.userId)
+  if (options?.listingId) formData.append("listingId", options.listingId)
+
+  files.forEach((file) => {
+    formData.append("files", file, file.name)
+  })
+
+  const response = await fetch("/api/uploads/listing-images", {
+    method: "POST",
+    body: formData,
+  })
+
+  const json = (await response.json()) as { ok?: boolean; urls?: string[]; error?: string }
+  if (!response.ok || !json.ok || !Array.isArray(json.urls)) {
+    throw new Error(json.error || `Upload failed with status ${response.status}`)
+  }
+
+  return json.urls.filter((url): url is string => typeof url === "string" && url.length > 0)
+}
+
 function sanitizeFilename(name: string): string {
   const trimmed = name.trim() || "upload"
   return trimmed.replace(/[^a-zA-Z0-9._-]/g, "_")
@@ -139,6 +161,14 @@ export async function uploadListingImages(
   let lastError: unknown
 
   if (shouldTrySupabase) {
+    try {
+      // Prefer server-side upload so we can use service-role auth without exposing secrets.
+      return await uploadToAppRoute(files, options)
+    } catch (error) {
+      lastError = error
+    }
+
+    // Fallback: direct upload via anon key (requires bucket + policies configured to allow it).
     try {
       return await uploadToSupabaseStorage(files, supabaseConfig, options)
     } catch (error) {

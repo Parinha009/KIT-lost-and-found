@@ -199,6 +199,7 @@ function ReportPageContent() {
             uploadedPhotoUrls = await uploadListingImages(photos, {
               userId: user.id,
               listingId: createdListing.id,
+              strict: true,
             })
           } catch (error) {
             await fetch(`/api/listings/${createdListing.id}`, { method: "DELETE" }).catch(
@@ -251,7 +252,11 @@ function ReportPageContent() {
         setFieldErrors(errors)
         toast.error("Please fix the errors in the form")
       } else {
-        toast.error("Failed to submit report. Please try again.")
+        const message =
+          error instanceof Error && error.message.trim()
+            ? error.message
+            : "Failed to submit report. Please try again."
+        toast.error(message)
       }
     } finally {
       setIsSubmitting(false)
