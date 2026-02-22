@@ -162,12 +162,16 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
     .select({
       id: dbSchema.items.id,
       createdBy: dbSchema.items.createdBy,
+      type: dbSchema.items.type,
     })
     .from(dbSchema.items)
     .where(eq(dbSchema.items.id, id))
     .limit(1)
 
   if (!existing) return jsonError("Item not found", 404)
+  if (actor.role === "student" && existing.type === "found") {
+    return jsonError("Students cannot modify found listings", 403)
+  }
 
   const isOwner = existing.createdBy === actor.id
   const isStaffOrAdmin = actor.role === "staff" || actor.role === "admin"
@@ -259,7 +263,11 @@ export async function DELETE(request: Request, context: { params: Promise<{ id: 
 
   try {
     const existing = await db
-      .select({ id: dbSchema.items.id, createdBy: dbSchema.items.createdBy })
+      .select({
+        id: dbSchema.items.id,
+        createdBy: dbSchema.items.createdBy,
+        type: dbSchema.items.type,
+      })
       .from(dbSchema.items)
       .where(eq(dbSchema.items.id, id))
       .limit(1)
@@ -267,6 +275,10 @@ export async function DELETE(request: Request, context: { params: Promise<{ id: 
     if (existing.length === 0) return jsonError("Item not found", 404)
 
     const row = existing[0]
+    if (actor.role === "student" && row.type === "found") {
+      return jsonError("Students cannot delete found listings", 403)
+    }
+
     const isStaffOrAdmin = actor.role === "staff" || actor.role === "admin"
     const isOwner = row.createdBy === actor.id
 

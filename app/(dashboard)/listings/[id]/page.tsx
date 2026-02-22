@@ -171,6 +171,7 @@ export default function ListingDetailPage({ params }: ListingDetailPageProps) {
   }
 
   const isOwner = user?.id === listing.user_id
+  const isStudent = user?.role === "student"
   const isStaffOrAdmin = user?.role === "staff" || user?.role === "admin"
   const actorHeaders: Record<string, string> = user
     ? {
@@ -179,9 +180,15 @@ export default function ListingDetailPage({ params }: ListingDetailPageProps) {
       }
     : {}
 
-  const canEditListing = Boolean(user && isOwner && listing.status === "active")
+  const isOwnerEditableListing = Boolean(
+    user &&
+      isOwner &&
+      listing.status === "active" &&
+      !(isStudent && listing.type === "found")
+  )
+  const canEditListing = isOwnerEditableListing
   const canCloseListing = Boolean(user && isStaffOrAdmin && listing.status !== "closed")
-  const canDeleteListing = Boolean(user && (isStaffOrAdmin || (isOwner && listing.status === "active")))
+  const canDeleteListing = Boolean(user && (isStaffOrAdmin || isOwnerEditableListing))
   const userClaims = claims.filter((claim) => claim.claimant_id === user?.id)
   const hasSubmittedClaim = userClaims.length > 0
   const latestUserClaim = [...userClaims].sort(
@@ -843,7 +850,7 @@ export default function ListingDetailPage({ params }: ListingDetailPageProps) {
           </Card>
 
           {/* Tips */}
-          {listing.type === "found" && (
+          {claimsEnabled && listing.type === "found" && (
             <Card className="border-primary/20 bg-primary/5">
               <CardHeader>
                 <CardTitle className="text-sm flex items-center gap-2">

@@ -2,7 +2,7 @@
 
 import React from "react"
 
-import { useState, useEffect, Suspense } from "react"
+import { useState, useEffect, useRef, Suspense } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useAuth } from "@/lib/auth-context"
 import { createListingSchema } from "@/lib/validators"
@@ -38,6 +38,8 @@ function ReportPageContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { user } = useAuth()
+  const canRegisterFound = user?.role === "staff" || user?.role === "admin"
+  const redirectedFoundTabRef = useRef(false)
   const [activeTab, setActiveTab] = useState<ListingType>("lost")
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isDbReady, setIsDbReady] = useState(false)
@@ -58,10 +60,35 @@ function ReportPageContent() {
 
   useEffect(() => {
     const type = searchParams.get("type")
-    if (type === "lost" || type === "found") {
-      setActiveTab(type)
+
+    if (type === "found") {
+      if (canRegisterFound) {
+        redirectedFoundTabRef.current = false
+        setActiveTab("found")
+        return
+      }
+
+      setActiveTab("lost")
+      if (!redirectedFoundTabRef.current) {
+        toast.warning("Only staff or admin can register found items. Switched to Lost Item.")
+        redirectedFoundTabRef.current = true
+      }
+
+      const nextParams = new URLSearchParams(searchParams.toString())
+      nextParams.set("type", "lost")
+      const nextQuery = nextParams.toString()
+      router.replace(nextQuery ? `/report?${nextQuery}` : "/report")
+      return
     }
-  }, [searchParams])
+
+    redirectedFoundTabRef.current = false
+    if (type === "lost") {
+      setActiveTab("lost")
+      return
+    }
+
+    setActiveTab("lost")
+  }, [canRegisterFound, router, searchParams])
 
   useEffect(() => {
     let cancelled = false
@@ -135,6 +162,13 @@ function ReportPageContent() {
     setFieldErrors({})
 
     try {
+      if (activeTab === "found" && !canRegisterFound) {
+        toast.error("Only staff or admin can register found items")
+        setActiveTab("lost")
+        setIsSubmitting(false)
+        return
+      }
+
       const dataToValidate = {
         ...formData,
         type: activeTab,
@@ -266,8 +300,6 @@ function ReportPageContent() {
       setIsSubmitting(false)
     }
   }
-
-  const canRegisterFound = user?.role === "staff" || user?.role === "admin"
 
   return (
     <div className="max-w-2xl mx-auto">
