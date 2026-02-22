@@ -11,7 +11,7 @@ import {
   type ReactNode,
 } from "react"
 import type { Session } from "@supabase/supabase-js"
-import type { Profile, User, UserRole } from "@/lib/types"
+import type { Profile, User } from "@/lib/types"
 import { getSupabaseBrowserClient } from "@/lib/supabase/client"
 import { getProfileByUserId, mapSessionToUser } from "@/lib/auth/session"
 import { registerPayloadSchema } from "@/lib/validators"
@@ -43,7 +43,6 @@ interface AuthContextType {
   forgotPassword: (email: string) => Promise<AuthResult>
   resetPassword: (password: string) => Promise<AuthResult>
   refreshProfile: () => Promise<void>
-  switchRole: (role: UserRole) => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -368,22 +367,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [supabase, syncFromSession])
 
-  const switchRole = useCallback(
-    async (role: UserRole): Promise<void> => {
-      if (!supabase || !user) return
-      if (user.role !== "admin") return
-
-      const { error } = await supabase
-        .from("profiles")
-        .update({ role })
-        .eq("user_id", user.id)
-
-      if (error) return
-      await refreshProfile()
-    },
-    [refreshProfile, supabase, user]
-  )
-
   const value: AuthContextType = {
     user,
     profile,
@@ -395,7 +378,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     forgotPassword,
     resetPassword,
     refreshProfile,
-    switchRole,
   }
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

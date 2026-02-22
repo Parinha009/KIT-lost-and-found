@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { desc, eq, inArray } from "drizzle-orm"
 import { getDbOrNull, dbSchema } from "@/lib/db"
-import type { Listing, ListingFilters, User } from "@/lib/types"
+import type { Listing, ListingFilters, User, UserRole } from "@/lib/types"
 import { createListingSchema } from "@/lib/validators"
 
 function mapType(type: string): Listing["type"] {
@@ -104,6 +104,31 @@ function jsonError(message: string, status = 400) {
   return NextResponse.json({ ok: false, error: message }, { status })
 }
 
+type Actor = {
+  id: string
+  role: UserRole
+}
+
+async function getActorFromProfile(
+  db: NonNullable<ReturnType<typeof getDbOrNull>>,
+  request: Request
+): Promise<Actor | null> {
+  const headerUserId = request.headers.get("x-user-id")?.trim()
+  if (!headerUserId) return null
+
+  const [profile] = await db
+    .select({
+      userId: dbSchema.profiles.userId,
+      role: dbSchema.profiles.role,
+    })
+    .from(dbSchema.profiles)
+    .where(eq(dbSchema.profiles.userId, headerUserId))
+    .limit(1)
+
+  if (!profile) return null
+  return { id: profile.userId, role: profile.role }
+}
+
 export async function GET(request: Request) {
   const url = new URL(request.url)
   const userId = url.searchParams.get("userId") || undefined
@@ -203,6 +228,7 @@ export async function POST(request: Request) {
   }
 
   if (!body.user_id?.trim()) return jsonError("user_id is required", 422)
+  const requestUserId = body.user_id.trim()
 
   const db = getDbOrNull()
   if (!db) {
@@ -217,20 +243,24 @@ export async function POST(request: Request) {
   }
 
   try {
+    const actor = await getActorFromProfile(db, request)
+    if (!actor) return jsonError("Unauthorized", 401)
+    if (actor.id !== requestUserId) return jsonError("Forbidden", 403)
+
     const now = new Date()
 
     const [creatorProfile] = await db
       .select()
       .from(dbSchema.profiles)
-      .where(eq(dbSchema.profiles.userId, body.user_id))
+      .where(eq(dbSchema.profiles.userId, actor.id))
       .limit(1)
 
     if (!creatorProfile) {
       return jsonError("Profile not found for this user. Complete registration first.", 422)
     }
 
-    if (parsed.data.type === "found" && creatorProfile.role !== "staff" && creatorProfile.role !== "admin") {
-      return jsonError("Only staff can register found items", 403)
+    if (parsed.data.type === "found" && actor.role === "student") {
+      return jsonError("Only staff/admin can register found items", 403)
     }
 
     const urls = Array.isArray(body.photoUrls)
@@ -250,7 +280,7 @@ export async function POST(request: Request) {
         storageLocation: parsed.data.storage_location || null,
         storageDetails: parsed.data.storage_details || null,
         imageUrls: urls,
-        createdBy: body.user_id,
+        createdBy: actor.id,
         createdAt: now,
         updatedAt: now,
       })

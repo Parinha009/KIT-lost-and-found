@@ -9,18 +9,11 @@ import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Separator } from "@/components/ui/separator"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
-import { User, Mail, Phone, Shield, Calendar, Save, LogOut } from "lucide-react"
+import { User, Mail, Phone, Calendar, Save, LogOut } from "lucide-react"
 import { formatDate } from "@/lib/date-utils"
 
 export default function ProfilePage() {
-  const { user, logout, switchRole } = useAuth()
+  const { user, logout } = useAuth()
   const [isEditing, setIsEditing] = useState(false)
   const [formData, setFormData] = useState({
     name: user?.name || "",
@@ -154,37 +147,6 @@ export default function ProfilePage() {
           </div>
         </CardContent>
       </Card>
-
-      {user?.role === "admin" && (
-        <Card className="border-dashed">
-          <CardHeader>
-            <CardTitle className="text-sm flex items-center gap-2">
-              <Shield className="w-4 h-4" />
-              Demo: Switch Role
-            </CardTitle>
-            <CardDescription>
-              For demonstration purposes, you can switch between different user roles
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center gap-4">
-              <Select value={user?.role} onValueChange={(v) => { void switchRole(v as "student" | "staff" | "admin") }}>
-                <SelectTrigger className="w-[180px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="student">Student</SelectItem>
-                  <SelectItem value="staff">Staff</SelectItem>
-                  <SelectItem value="admin">Admin</SelectItem>
-                </SelectContent>
-              </Select>
-              <p className="text-sm text-muted-foreground">
-                This will change your permissions and available features
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-      )}
 
       {/* Danger Zone */}
       <Card className="border-destructive/50">

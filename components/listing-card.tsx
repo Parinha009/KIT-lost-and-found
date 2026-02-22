@@ -6,15 +6,16 @@ import Link from "next/link"
 import { Card, CardContent, CardFooter } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { MapPin, Calendar, Package, Eye } from "lucide-react"
+import { MapPin, Calendar, Package, Eye, MessageSquare } from "lucide-react"
 import type { Listing } from "@/lib/types"
 import { formatDistanceToNow } from "@/lib/date-utils"
 
 interface ListingCardProps {
   listing: Listing
+  quickClaimHref?: string
 }
 
-function ListingCardComponent({ listing }: ListingCardProps) {
+function ListingCardComponent({ listing, quickClaimHref }: ListingCardProps) {
   const primaryImageUrl =
     listing.image_urls?.[0]?.trim() || listing.photos?.[0]?.url?.trim() || ""
   const hasPhoto = primaryImageUrl.length > 0
@@ -77,12 +78,22 @@ function ListingCardComponent({ listing }: ListingCardProps) {
       </CardContent>
 
       <CardFooter className="mt-auto p-4 pt-0">
-        <Button variant="outline" size="sm" className="w-full bg-transparent" asChild>
-          <Link href={`/listings/${listing.id}`}>
-            <Eye className="w-4 h-4 mr-2" />
-            View Details
-          </Link>
-        </Button>
+        <div className={`grid w-full gap-2 ${quickClaimHref ? "sm:grid-cols-2" : "sm:grid-cols-1"}`}>
+          <Button variant="outline" size="sm" className="w-full bg-transparent" asChild>
+            <Link href={`/listings/${listing.id}`}>
+              <Eye className="w-4 h-4 mr-2" />
+              View Details
+            </Link>
+          </Button>
+          {quickClaimHref && (
+            <Button size="sm" className="w-full" asChild>
+              <Link href={quickClaimHref}>
+                <MessageSquare className="w-4 h-4 mr-2" />
+                Claim
+              </Link>
+            </Button>
+          )}
+        </div>
       </CardFooter>
     </Card>
   )

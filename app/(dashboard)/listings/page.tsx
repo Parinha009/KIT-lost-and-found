@@ -16,11 +16,13 @@ import { Card, CardContent } from "@/components/ui/card"
 import { ListingCard } from "@/components/listing-card"
 import type { Listing } from "@/lib/types"
 import { ITEM_CATEGORIES, CAMPUS_LOCATIONS } from "@/lib/types"
+import { useAuth } from "@/lib/auth-context"
 import { readListingsCache, writeListingsCache, isListingsCacheFresh } from "@/lib/client/listings-cache"
 import { subscribeListingsUpdated } from "@/lib/client/listings-sync"
 import { Search, Filter, X, Package } from "lucide-react"
 
 function ListingsPageContent() {
+  const { user } = useAuth()
   const searchParams = useSearchParams()
   const successMessage = searchParams.get("success")
   const createdListingId = searchParams.get("created")
@@ -324,9 +326,21 @@ function ListingsPageContent() {
       {/* Listings Grid */}
       {filteredListings.length > 0 ? (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {filteredListings.map((listing) => (
-            <ListingCard key={listing.id} listing={listing} />
-          ))}
+          {filteredListings.map((listing) => {
+            const canQuickClaim =
+              user?.role === "student" &&
+              listing.type === "found" &&
+              listing.user_id !== user.id &&
+              (listing.status === "active" || listing.status === "matched")
+
+            return (
+              <ListingCard
+                key={listing.id}
+                listing={listing}
+                quickClaimHref={canQuickClaim ? `/listings/${listing.id}?claim=1` : undefined}
+              />
+            )
+          })}
         </div>
       ) : (
         <Card>

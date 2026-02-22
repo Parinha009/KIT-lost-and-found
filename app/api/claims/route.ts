@@ -8,15 +8,24 @@ function jsonError(message: string, status = 400) {
   return NextResponse.json({ ok: false, error: message }, { status })
 }
 
-function isUserRole(value: string | null): value is UserRole {
-  return value === "student" || value === "staff" || value === "admin"
-}
+async function getActorFromProfile(
+  db: NonNullable<ReturnType<typeof getDbOrNull>>,
+  request: Request
+): Promise<{ id: string; role: UserRole } | null> {
+  const headerUserId = request.headers.get("x-user-id")?.trim()
+  if (!headerUserId) return null
 
-function getActor(request: Request): { id: string; role: UserRole } | null {
-  const id = request.headers.get("x-user-id") ?? null
-  const role = request.headers.get("x-user-role") ?? null
-  if (!id || !isUserRole(role)) return null
-  return { id, role }
+  const [profile] = await db
+    .select({
+      userId: dbSchema.profiles.userId,
+      role: dbSchema.profiles.role,
+    })
+    .from(dbSchema.profiles)
+    .where(eq(dbSchema.profiles.userId, headerUserId))
+    .limit(1)
+
+  if (!profile) return null
+  return { id: profile.userId, role: profile.role }
 }
 
 function mapListingType(type: string): Listing["type"] {
@@ -182,7 +191,7 @@ export async function GET(request: Request) {
   const status = normalizeClaimStatus(url.searchParams.get("status"))
   const countOnly = url.searchParams.get("countOnly") === "1"
 
-  const actor = getActor(request)
+  const actor = await getActorFromProfile(db, request)
   if (!actor) return jsonError("Unauthorized", 401)
 
   const isStaffOrAdmin = actor.role === "staff" || actor.role === "admin"
@@ -230,7 +239,7 @@ export async function POST(request: Request) {
   const db = getDbOrNull()
   if (!db) return jsonError("Database not configured", 503)
 
-  const actor = getActor(request)
+  const actor = await getActorFromProfile(db, request)
   if (!actor) return jsonError("Unauthorized", 401)
   if (actor.role !== "student") return jsonError("Only students can submit claims", 403)
 

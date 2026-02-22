@@ -207,7 +207,10 @@ function ReportPageContent() {
 
       const res = await fetch("/api/items", {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: {
+          "content-type": "application/json",
+          "x-user-id": user.id,
+        },
         body: JSON.stringify({
           ...validatedData,
           category: validatedData.category as ItemCategory,
@@ -301,6 +304,18 @@ function ReportPageContent() {
     }
   }
 
+  const handleTabChange = (value: string) => {
+    if (value === "found" && !canRegisterFound) {
+      toast.error("Only staff or admin can register found items")
+      setActiveTab("lost")
+      return
+    }
+
+    if (value === "lost" || value === "found") {
+      setActiveTab(value as ListingType)
+    }
+  }
+
   return (
     <div className="max-w-2xl mx-auto">
       <div className="mb-6">
@@ -310,7 +325,7 @@ function ReportPageContent() {
         </p>
       </div>
 
-      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as ListingType)}>
+      <Tabs value={activeTab} onValueChange={handleTabChange}>
         <TabsList className="grid w-full grid-cols-2 mb-6">
           <TabsTrigger value="lost" className="flex items-center gap-2">
             <Package className="w-4 h-4" />

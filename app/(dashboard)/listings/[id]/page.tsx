@@ -1,9 +1,9 @@
 "use client"
 
-import { use, useEffect, useState } from "react"
+import { use, useEffect, useRef, useState } from "react"
 import Image from "next/image"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { useAuth } from "@/lib/auth-context"
 import { createClaimSchema } from "@/lib/validators"
 import { removeListingFromCache, upsertListingCacheItem } from "@/lib/client/listings-cache"
@@ -48,6 +48,7 @@ interface ListingDetailPageProps {
 export default function ListingDetailPage({ params }: ListingDetailPageProps) {
   const resolvedParams = use(params)
   const router = useRouter()
+  const searchParams = useSearchParams()
   const { user } = useAuth()
   const claimsEnabled = true
   const matchingEnabled = false
@@ -69,6 +70,7 @@ export default function ListingDetailPage({ params }: ListingDetailPageProps) {
   const [listing, setListing] = useState<Listing | null>(null)
   const [isLoadingListing, setIsLoadingListing] = useState(true)
   const [claims, setClaims] = useState<Claim[]>([])
+  const quickClaimHandledRef = useRef(false)
 
   useEffect(() => {
     let cancelled = false
@@ -146,6 +148,29 @@ export default function ListingDetailPage({ params }: ListingDetailPageProps) {
       setRefreshKey((prev) => prev + 1)
     })
   }, [resolvedParams.id, router])
+
+  useEffect(() => {
+    quickClaimHandledRef.current = false
+  }, [resolvedParams.id])
+
+  useEffect(() => {
+    if (quickClaimHandledRef.current) return
+    if (searchParams.get("claim") !== "1") return
+    if (!listing || !user) return
+
+    const hasSubmittedClaim = claims.some((claim) => claim.claimant_id === user.id)
+    const canAutoOpenClaim =
+      user.role === "student" &&
+      listing.type === "found" &&
+      listing.user_id !== user.id &&
+      (listing.status === "active" || listing.status === "matched") &&
+      !hasSubmittedClaim
+
+    if (!canAutoOpenClaim) return
+
+    quickClaimHandledRef.current = true
+    setClaimDialogOpen(true)
+  }, [claims, listing, searchParams, user])
 
   if (isLoadingListing) {
     return (
