@@ -247,7 +247,7 @@ export async function POST(request: Request) {
     if (!actor) return jsonError("Unauthorized", 401)
     if (actor.id !== requestUserId) return jsonError("Forbidden", 403)
     const enableFoundReportForStudents =
-      process.env.NEXT_PUBLIC_ENABLE_FOUND_REPORT === "true"
+      process.env.NEXT_PUBLIC_ENABLE_FOUND_REPORT?.trim().toLowerCase() === "true"
 
     const now = new Date()
 

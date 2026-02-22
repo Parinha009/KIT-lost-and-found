@@ -30,7 +30,7 @@ import {
   type ItemCategory,
   type ListingType,
 } from "@/lib/types"
-import { Package, Search, Upload, X, MapPin, Calendar, FileText } from "lucide-react"
+import { Package, Search, Upload, X, Calendar, FileText } from "lucide-react"
 import { toast } from "sonner"
 import { ZodError } from "zod"
 
@@ -39,7 +39,7 @@ function ReportPageContent() {
   const searchParams = useSearchParams()
   const { user } = useAuth()
   const enableFoundReportForStudents =
-    process.env.NEXT_PUBLIC_ENABLE_FOUND_REPORT === "true"
+    process.env.NEXT_PUBLIC_ENABLE_FOUND_REPORT?.trim().toLowerCase() === "true"
   const canRegisterFound =
     user?.role === "staff" ||
     user?.role === "admin" ||
@@ -180,22 +180,6 @@ function ReportPageContent() {
       }
 
       const validatedData = createListingSchema.parse(dataToValidate)
-
-      if (activeTab === "found" && photos.length === 0) {
-        toast.error("Found items must include at least one photo")
-        setIsSubmitting(false)
-        return
-      }
-
-      if (activeTab === "found" && !validatedData.storage_location?.trim()) {
-        setFieldErrors((prev) => ({
-          ...prev,
-          storage_location: "Storage location is required for found items",
-        }))
-        toast.error("Storage location is required for found items")
-        setIsSubmitting(false)
-        return
-      }
 
       if (!user) {
         toast.error("You must be logged in to create a listing")
@@ -407,10 +391,10 @@ function ReportPageContent() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Search className="w-5 h-5 text-primary" />
-                Register Found Item
+                Report Found Item
               </CardTitle>
               <CardDescription>
-                Register an item you found to help the owner recover it
+                Describe the item you found to help the owner recover it
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -423,58 +407,17 @@ function ReportPageContent() {
                   fieldErrors={fieldErrors}
                 />
 
-                {/* Storage Location (Required for found items) */}
-                <div className="space-y-4 p-4 bg-muted/50 rounded-lg">
-                  <h3 className="font-medium flex items-center gap-2">
-                    <MapPin className="w-4 h-4" />
-                    Storage Information
-                  </h3>
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <div className="space-y-2">
-                      <Label htmlFor="storage_location">Storage Location *</Label>
-                      <Select
-                        value={formData.storage_location}
-                        onValueChange={(v) => handleSelectChange("storage_location", v)}
-                      >
-                        <SelectTrigger aria-invalid={!!fieldErrors.storage_location}>
-                          <SelectValue placeholder="Select storage location" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="Security Office">Security Office</SelectItem>
-                          <SelectItem value="Admin Office">Admin Office</SelectItem>
-                          <SelectItem value="Library Front Desk">Library Front Desk</SelectItem>
-                          <SelectItem value="Student Center">Student Center</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      {fieldErrors.storage_location && (
-                        <p className="text-sm text-destructive">{fieldErrors.storage_location}</p>
-                      )}
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="storage_details">Storage Details</Label>
-                      <Input
-                        id="storage_details"
-                        name="storage_details"
-                        placeholder="e.g., Shelf B-3"
-                        value={formData.storage_details}
-                        onChange={handleInputChange}
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Photo Upload (Required for found) */}
+                {/* Photo Upload (Optional for found) */}
                 <div className="space-y-2">
-                  <Label>Photos *</Label>
+                  <Label>Photo (Optional)</Label>
                   <p className="text-sm text-muted-foreground mb-2">
-                    Upload clear photos to help identify the item
+                    Upload a photo of the item if you have one
                   </p>
                   <PhotoUploader
                     photos={photos}
                     previewUrls={previewUrls}
                     onUpload={handlePhotoUpload}
                     onRemove={removePhoto}
-                    required
                   />
                 </div>
 
@@ -488,7 +431,7 @@ function ReportPageContent() {
                     Cancel
                   </Button>
                   <Button type="submit" className="flex-1" disabled={isSubmitting}>
-                    {isSubmitting ? "Submitting..." : "Register Item"}
+                    {isSubmitting ? "Submitting..." : "Submit Report"}
                   </Button>
                 </div>
               </form>
