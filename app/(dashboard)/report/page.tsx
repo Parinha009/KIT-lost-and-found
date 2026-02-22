@@ -38,7 +38,12 @@ function ReportPageContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { user } = useAuth()
-  const canRegisterFound = user?.role === "staff" || user?.role === "admin"
+  const enableFoundReportForStudents =
+    process.env.NEXT_PUBLIC_ENABLE_FOUND_REPORT === "true"
+  const canRegisterFound =
+    user?.role === "staff" ||
+    user?.role === "admin" ||
+    (enableFoundReportForStudents && user?.role === "student")
   const redirectedFoundTabRef = useRef(false)
   const [activeTab, setActiveTab] = useState<ListingType>("lost")
   const [isSubmitting, setIsSubmitting] = useState(false)

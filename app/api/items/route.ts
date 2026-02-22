@@ -246,6 +246,8 @@ export async function POST(request: Request) {
     const actor = await getActorFromProfile(db, request)
     if (!actor) return jsonError("Unauthorized", 401)
     if (actor.id !== requestUserId) return jsonError("Forbidden", 403)
+    const enableFoundReportForStudents =
+      process.env.NEXT_PUBLIC_ENABLE_FOUND_REPORT === "true"
 
     const now = new Date()
 
@@ -259,8 +261,12 @@ export async function POST(request: Request) {
       return jsonError("Profile not found for this user. Complete registration first.", 422)
     }
 
-    if (parsed.data.type === "found" && actor.role === "student") {
-      return jsonError("Only staff/admin can register found items", 403)
+    if (
+      parsed.data.type === "found" &&
+      actor.role === "student" &&
+      !enableFoundReportForStudents
+    ) {
+      return jsonError("Found-item reporting is currently unavailable for students", 403)
     }
 
     const urls = Array.isArray(body.photoUrls)

@@ -169,13 +169,10 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
     .limit(1)
 
   if (!existing) return jsonError("Item not found", 404)
-  if (actor.role === "student" && existing.type === "found") {
-    return jsonError("Students cannot modify found listings", 403)
-  }
 
   const isOwner = existing.createdBy === actor.id
   const isStaffOrAdmin = actor.role === "staff" || actor.role === "admin"
-  const canEditFields = isOwner || isStaffOrAdmin
+  const canEditFields = isOwner
 
   const update: Record<string, unknown> = { updatedAt: now }
 
@@ -200,11 +197,11 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
     update.locationDetails = body.location_details.trim() || null
   }
   if (typeof body.storage_location === "string") {
-    if (!isStaffOrAdmin) return jsonError("Forbidden", 403)
+    if (!isOwner) return jsonError("Forbidden", 403)
     update.storageLocation = body.storage_location.trim() || null
   }
   if (typeof body.storage_details === "string") {
-    if (!isStaffOrAdmin) return jsonError("Forbidden", 403)
+    if (!isOwner) return jsonError("Forbidden", 403)
     update.storageDetails = body.storage_details.trim() || null
   }
   if (typeof body.date_occurred === "string") {
@@ -275,25 +272,17 @@ export async function DELETE(request: Request, context: { params: Promise<{ id: 
     if (existing.length === 0) return jsonError("Item not found", 404)
 
     const row = existing[0]
-    if (actor.role === "student" && row.type === "found") {
-      return jsonError("Students cannot delete found listings", 403)
-    }
-
-    const isStaffOrAdmin = actor.role === "staff" || actor.role === "admin"
     const isOwner = row.createdBy === actor.id
+    if (!isOwner) return jsonError("Forbidden", 403)
 
-    if (!isStaffOrAdmin) {
-      if (!isOwner) return jsonError("Forbidden", 403)
+    const approved = await db
+      .select({ id: dbSchema.claims.id })
+      .from(dbSchema.claims)
+      .where(and(eq(dbSchema.claims.listingId, id), eq(dbSchema.claims.status, "approved")))
+      .limit(1)
 
-      const approved = await db
-        .select({ id: dbSchema.claims.id })
-        .from(dbSchema.claims)
-        .where(and(eq(dbSchema.claims.listingId, id), eq(dbSchema.claims.status, "approved")))
-        .limit(1)
-
-      if (approved.length > 0) {
-        return jsonError("You cannot delete an item with an approved claim", 409)
-      }
+    if (approved.length > 0) {
+      return jsonError("You cannot delete an item with an approved claim", 409)
     }
 
     await db.delete(dbSchema.items).where(eq(dbSchema.items.id, id))

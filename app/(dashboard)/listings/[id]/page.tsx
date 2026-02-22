@@ -196,7 +196,6 @@ export default function ListingDetailPage({ params }: ListingDetailPageProps) {
   }
 
   const isOwner = user?.id === listing.user_id
-  const isStudent = user?.role === "student"
   const isStaffOrAdmin = user?.role === "staff" || user?.role === "admin"
   const actorHeaders: Record<string, string> = user
     ? {
@@ -208,16 +207,13 @@ export default function ListingDetailPage({ params }: ListingDetailPageProps) {
   const isOwnerEditableListing = Boolean(
     user &&
       isOwner &&
-      listing.status === "active" &&
-      !(isStudent && listing.type === "found")
+      listing.status === "active"
   )
   const canEditListing = isOwnerEditableListing
   const canCloseListing = Boolean(user && isStaffOrAdmin && listing.status !== "closed")
-  const canDeleteListing = Boolean(user && (isStaffOrAdmin || isOwnerEditableListing))
+  const canDeleteListing = Boolean(user && isOwnerEditableListing)
   const canReviewClaims = Boolean(user && isStaffOrAdmin && listing.type === "found")
-  const showLegacyFoundReadonlyHint = Boolean(
-    user && isOwner && isStudent && listing.type === "found"
-  )
+  const showLegacyFoundReadonlyHint = false
   const userClaims = claims.filter((claim) => claim.claimant_id === user?.id)
   const hasSubmittedClaim = userClaims.length > 0
   const latestUserClaim = [...userClaims].sort(
