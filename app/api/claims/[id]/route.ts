@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { eq, inArray } from "drizzle-orm"
+import { and, eq, inArray, ne } from "drizzle-orm"
 import { getDbOrNull, dbSchema } from "@/lib/db"
 import type { Claim, Listing, User, UserRole } from "@/lib/types"
 
@@ -205,6 +205,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
       reviewerId: actor.id,
       updatedAt: now,
     }
+    let competingPendingClaims: Array<{ id: string; claimantId: string }> = []
 
     if (status === "rejected") {
       update.rejectionReason =
@@ -220,6 +221,20 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
           : null
       update.handoverAt = body.handover_at ? new Date(body.handover_at) : now
       update.rejectionReason = null
+
+      competingPendingClaims = await db
+        .select({
+          id: dbSchema.claims.id,
+          claimantId: dbSchema.claims.claimantId,
+        })
+        .from(dbSchema.claims)
+        .where(
+          and(
+            eq(dbSchema.claims.listingId, existing.listingId),
+            eq(dbSchema.claims.status, "pending"),
+            ne(dbSchema.claims.id, existing.id)
+          )
+        )
     }
 
     const reviewer = body.reviewer
@@ -246,6 +261,34 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
     }
 
     await db.update(dbSchema.claims).set(update).where(eq(dbSchema.claims.id, id))
+
+    if (status === "approved" && competingPendingClaims.length > 0) {
+      const rejectedReason = "Another claim for this item was approved."
+      const rejectedClaimIds = competingPendingClaims.map((claim) => claim.id)
+
+      await db
+        .update(dbSchema.claims)
+        .set({
+          status: "rejected",
+          reviewerId: actor.id,
+          rejectionReason: rejectedReason,
+          updatedAt: now,
+        })
+        .where(inArray(dbSchema.claims.id, rejectedClaimIds))
+
+      await db.insert(dbSchema.notifications).values(
+        competingPendingClaims.map((claim) => ({
+          userId: claim.claimantId,
+          type: "claim_rejected" as const,
+          title: `Claim rejected for \"${listing.name}\"`,
+          message: `Your claim for \"${listing.name}\" was rejected. Reason: ${rejectedReason}`,
+          isRead: false,
+          relatedListingId: listing.id,
+          relatedClaimId: claim.id,
+          createdAt: now,
+        }))
+      )
+    }
 
     const notificationType = status === "approved" ? "claim_approved" : "claim_rejected"
     const title =

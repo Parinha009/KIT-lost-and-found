@@ -23,6 +23,7 @@ import {
   FileSearch,
   FilePlus,
   MessageSquare,
+  FileCheck,
   Settings,
   LogOut,
   Shield,
@@ -34,6 +35,7 @@ const navigation = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { name: "Browse Items", href: "/listings", icon: FileSearch },
   { name: "Report Item", href: "/report", icon: FilePlus },
+  { name: "Claims", href: "/claims", icon: FileCheck },
   { name: "Messages", href: "/messages", icon: MessageSquare },
 ]
 

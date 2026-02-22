@@ -265,6 +265,9 @@ export async function POST(request: Request) {
       .limit(1)
 
     if (!listingRow) return jsonError("Listing not found", 404)
+    if (listingRow.type !== "found") {
+      return jsonError("Only found listings can be claimed", 422)
+    }
 
     if (listingRow.createdBy === claimantId) {
       return jsonError("You cannot claim your own listing", 422)
@@ -294,7 +297,37 @@ export async function POST(request: Request) {
       }
     }
 
-    const pending = await db
+    const existingApproved = await db
+      .select({ id: dbSchema.claims.id })
+      .from(dbSchema.claims)
+      .where(
+        and(
+          eq(dbSchema.claims.listingId, parsed.data.listing_id),
+          eq(dbSchema.claims.status, "approved")
+        )
+      )
+      .limit(1)
+
+    if (existingApproved.length > 0) {
+      return jsonError("This item has already been claimed", 409)
+    }
+
+    const pendingForListing = await db
+      .select({ id: dbSchema.claims.id })
+      .from(dbSchema.claims)
+      .where(
+        and(
+          eq(dbSchema.claims.listingId, parsed.data.listing_id),
+          eq(dbSchema.claims.status, "pending")
+        )
+      )
+      .limit(1)
+
+    if (pendingForListing.length > 0) {
+      return jsonError("This item already has a pending claim under review", 409)
+    }
+
+    const pendingForClaimant = await db
       .select({ id: dbSchema.claims.id })
       .from(dbSchema.claims)
       .where(
@@ -306,7 +339,7 @@ export async function POST(request: Request) {
       )
       .limit(1)
 
-    if (pending.length > 0) {
+    if (pendingForClaimant.length > 0) {
       return jsonError("You already have a pending claim for this item", 409)
     }
 

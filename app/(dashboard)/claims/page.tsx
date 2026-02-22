@@ -86,6 +86,25 @@ export default function ClaimsPage() {
     void refreshClaims()
   }, [refreshClaims])
 
+  useEffect(() => {
+    if (!user) return
+
+    const interval = window.setInterval(() => {
+      void refreshClaims()
+    }, 15_000)
+
+    const onFocus = () => {
+      void refreshClaims()
+    }
+
+    window.addEventListener("focus", onFocus)
+
+    return () => {
+      window.clearInterval(interval)
+      window.removeEventListener("focus", onFocus)
+    }
+  }, [refreshClaims, user?.id])
+
   const isStaffOrAdmin = user?.role === "staff" || user?.role === "admin"
 
   // Filter claims based on user role

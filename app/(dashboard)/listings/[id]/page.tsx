@@ -49,7 +49,7 @@ export default function ListingDetailPage({ params }: ListingDetailPageProps) {
   const resolvedParams = use(params)
   const router = useRouter()
   const { user } = useAuth()
-  const claimsEnabled = false
+  const claimsEnabled = true
   const matchingEnabled = false
   const [claimDialogOpen, setClaimDialogOpen] = useState(false)
   const [editDialogOpen, setEditDialogOpen] = useState(false)
@@ -82,7 +82,7 @@ export default function ListingDetailPage({ params }: ListingDetailPageProps) {
         const nextListing = res.ok && json.ok && json.data ? json.data : null
         if (!cancelled) setListing(nextListing)
 
-        if (!nextListing || !user || !claimsEnabled) {
+        if (!nextListing || !user || !claimsEnabled || nextListing.type !== "found") {
           if (!cancelled) setClaims([])
           return
         }
@@ -189,6 +189,10 @@ export default function ListingDetailPage({ params }: ListingDetailPageProps) {
   const canEditListing = isOwnerEditableListing
   const canCloseListing = Boolean(user && isStaffOrAdmin && listing.status !== "closed")
   const canDeleteListing = Boolean(user && (isStaffOrAdmin || isOwnerEditableListing))
+  const canReviewClaims = Boolean(user && isStaffOrAdmin && listing.type === "found")
+  const showLegacyFoundReadonlyHint = Boolean(
+    user && isOwner && isStudent && listing.type === "found"
+  )
   const userClaims = claims.filter((claim) => claim.claimant_id === user?.id)
   const hasSubmittedClaim = userClaims.length > 0
   const latestUserClaim = [...userClaims].sort(
@@ -707,6 +711,12 @@ export default function ListingDetailPage({ params }: ListingDetailPageProps) {
                 </div>
               )}
 
+              {showLegacyFoundReadonlyHint && (
+                <div className="p-3 rounded-md text-sm bg-muted text-muted-foreground text-center">
+                  This found listing is owned by your account. You cannot claim your own item.
+                </div>
+              )}
+
               {canEditListing && (
                 <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
                   <DialogTrigger asChild>
@@ -837,6 +847,15 @@ export default function ListingDetailPage({ params }: ListingDetailPageProps) {
                 >
                   <Trash2 className="mr-2 h-4 w-4" />
                   {isDeleting ? "Deleting..." : "Delete Listing"}
+                </Button>
+              )}
+
+              {canReviewClaims && (
+                <Button variant="outline" className="w-full bg-transparent" asChild>
+                  <Link href="/claims">
+                    <CheckCircle className="mr-2 h-4 w-4" />
+                    Review Claims
+                  </Link>
                 </Button>
               )}
 
