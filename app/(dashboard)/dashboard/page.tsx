@@ -37,7 +37,7 @@ export default function DashboardPage() {
   useEffect(() => {
     const interval = window.setInterval(() => {
       setSyncTick((prev) => prev + 1)
-    }, 10_000)
+    }, 30_000)
 
     return () => {
       window.clearInterval(interval)

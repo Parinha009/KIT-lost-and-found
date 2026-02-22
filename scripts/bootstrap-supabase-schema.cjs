@@ -224,7 +224,7 @@ async function main() {
     await sql`create index if not exists items_type_idx on public.items(type)`
     await sql`create index if not exists items_created_at_idx on public.items(created_at desc)`
 
-    // Security hardening: public.items is exposed via PostgREST; enforce RLS and block direct anon/auth access.
+    // Security hardening: enforce RLS, block direct writes, and allow authenticated read access for realtime subscriptions.
     await sql`alter table public.items enable row level security`
     await sql`
       do $$
@@ -234,6 +234,48 @@ async function main() {
         end if;
         if exists (select 1 from pg_roles where rolname = 'authenticated') then
           execute 'revoke all on table public.items from authenticated';
+        end if;
+      end $$;
+    `
+    await sql`
+      do $$
+      begin
+        if exists (select 1 from pg_roles where rolname = 'authenticated') then
+          execute 'grant select on table public.items to authenticated';
+        end if;
+      end $$;
+    `
+    await sql`
+      do $$
+      begin
+        if not exists (
+          select 1
+          from pg_policies
+          where schemaname = 'public'
+            and tablename = 'items'
+            and policyname = 'items_select_authenticated'
+        ) then
+          create policy items_select_authenticated
+            on public.items
+            for select
+            to authenticated
+            using (true);
+        end if;
+      end $$;
+    `
+    await sql`
+      do $$
+      begin
+        if exists (
+          select 1 from pg_publication where pubname = 'supabase_realtime'
+        ) and not exists (
+          select 1
+          from pg_publication_tables
+          where pubname = 'supabase_realtime'
+            and schemaname = 'public'
+            and tablename = 'items'
+        ) then
+          alter publication supabase_realtime add table public.items;
         end if;
       end $$;
     `

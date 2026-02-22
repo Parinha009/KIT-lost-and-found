@@ -57,7 +57,7 @@ export default function MyListingsPage() {
   useEffect(() => {
     const interval = window.setInterval(() => {
       void refreshListings()
-    }, 10_000)
+    }, 30_000)
 
     return () => {
       window.clearInterval(interval)

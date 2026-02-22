@@ -85,7 +85,7 @@ function ListingsPageContent() {
   useEffect(() => {
     const interval = window.setInterval(() => {
       void refreshListings({ force: true })
-    }, 10_000)
+    }, 30_000)
 
     return () => {
       window.clearInterval(interval)
