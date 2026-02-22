@@ -94,10 +94,8 @@ function applySearchFilters(listings: Listing[], filters: ListingFilters): Listi
   })
 }
 
-function getItemsCacheControl(userId?: string): string {
-  return userId
-    ? "private, max-age=10, stale-while-revalidate=30"
-    : "public, max-age=30, stale-while-revalidate=120"
+function getItemsCacheControl(): string {
+  return "no-store"
 }
 
 function jsonError(message: string, status = 400) {
@@ -176,7 +174,7 @@ export async function GET(request: Request) {
         source: "supabase-postgres-drizzle",
         data: applySearchFilters(mapped, filters),
       },
-      { headers: { "Cache-Control": getItemsCacheControl(userId) } }
+      { headers: { "Cache-Control": getItemsCacheControl() } }
     )
   } catch (error) {
     console.error("[api/items][GET] failed", error)
