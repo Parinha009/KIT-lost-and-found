@@ -34,15 +34,14 @@ async function readErrorDetail(response: Response): Promise<string> {
 }
 
 function getSupabaseStorageServerConfig():
-  | { url: string; serviceRoleKey: string; anonKey: string }
+  | { url: string; serviceRoleKey: string }
   | null {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 
-  if (!url || !anonKey || !serviceRoleKey) return null
+  if (!url || !serviceRoleKey) return null
 
-  return { url: url.replace(/\/+$/, ""), anonKey, serviceRoleKey }
+  return { url: url.replace(/\/+$/, ""), serviceRoleKey }
 }
 
 export async function POST(request: Request) {
@@ -52,7 +51,7 @@ export async function POST(request: Request) {
       {
         ok: false,
         error:
-          "Supabase Storage upload is not configured. Set SUPABASE_SERVICE_ROLE_KEY (server-only) and ensure NEXT_PUBLIC_SUPABASE_URL/NEXT_PUBLIC_SUPABASE_ANON_KEY are set.",
+          "Supabase Storage upload is not configured. Set SUPABASE_SERVICE_ROLE_KEY (server-only) and NEXT_PUBLIC_SUPABASE_URL.",
       },
       { status: 503 }
     )
@@ -119,4 +118,3 @@ export async function POST(request: Request) {
 
   return NextResponse.json({ ok: true, urls })
 }
-

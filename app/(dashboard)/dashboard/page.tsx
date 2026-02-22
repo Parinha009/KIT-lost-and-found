@@ -6,6 +6,8 @@ import { useAuth } from "@/lib/auth-context"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { readListingsCache, writeListingsCache } from "@/lib/client/listings-cache"
+import { subscribeListingsUpdated } from "@/lib/client/listings-sync"
 import {
   Package,
   Search,
@@ -16,7 +18,7 @@ import {
   MapPin,
   Calendar,
 } from "lucide-react"
-import type { Claim, Listing } from "@/lib/types"
+import type { Listing } from "@/lib/types"
 import { formatDistanceToNow } from "@/lib/date-utils"
 
 export default function DashboardPage() {
@@ -24,9 +26,26 @@ export default function DashboardPage() {
   const [listings, setListings] = useState<Listing[]>([])
   const [pendingClaimsCount, setPendingClaimsCount] = useState(0)
   const [loadError, setLoadError] = useState<string | null>(null)
+  const [syncTick, setSyncTick] = useState(0)
 
   useEffect(() => {
-    if (!user) return
+    return subscribeListingsUpdated(() => {
+      setSyncTick((prev) => prev + 1)
+    })
+  }, [])
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      setSyncTick((prev) => prev + 1)
+    }, 10_000)
+
+    return () => {
+      window.clearInterval(interval)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!user?.id) return
 
     const actor = user
     const actorHeaders: Record<string, string> = {
@@ -35,13 +54,16 @@ export default function DashboardPage() {
     }
 
     let cancelled = false
+    const cached = readListingsCache()
 
-    async function load() {
+    if (cached) {
+      setListings(cached.data)
+      setLoadError(null)
+    }
+
+    async function loadListings() {
       try {
-        const [listingsRes, claimsRes] = await Promise.all([
-          fetch("/api/listings", { cache: "no-store" }),
-          fetch("/api/claims?status=pending", { cache: "no-store", headers: actorHeaders }),
-        ])
+        const listingsRes = await fetch("/api/items", { cache: "no-store" })
 
         const listingsJson = (await listingsRes.json().catch(() => ({}))) as {
           ok?: boolean
@@ -52,43 +74,72 @@ export default function DashboardPage() {
           throw new Error(listingsJson.error || "Failed to load listings")
         }
 
-        const claimsJson = (await claimsRes.json().catch(() => ({}))) as {
-          ok?: boolean
-          data?: Claim[]
-          error?: string
-        }
-        if (!claimsRes.ok || !claimsJson.ok) {
-          throw new Error(claimsJson.error || "Failed to load claims")
-        }
-
         const nextListings = Array.isArray(listingsJson.data) ? listingsJson.data : []
-        const nextClaims = Array.isArray(claimsJson.data) ? claimsJson.data : []
 
         if (!cancelled) {
+          writeListingsCache(nextListings)
           setLoadError(null)
           setListings(nextListings)
-          setPendingClaimsCount(nextClaims.filter((c) => c.status === "pending").length)
         }
       } catch (error) {
         if (!cancelled) {
-          setListings([])
-          setPendingClaimsCount(0)
-          setLoadError(error instanceof Error ? error.message : "Failed to load dashboard data")
+          if (!cached) {
+            setListings([])
+            setLoadError(error instanceof Error ? error.message : "Failed to load listings")
+          } else {
+            setLoadError("Showing cached listings. Live refresh failed.")
+          }
         }
       }
     }
 
-    void load()
+    async function loadPendingClaimsCount() {
+      try {
+        const claimsRes = await fetch("/api/claims?status=pending&countOnly=1", {
+          cache: "no-store",
+          headers: actorHeaders,
+        })
+
+        const claimsJson = (await claimsRes.json().catch(() => ({}))) as {
+          ok?: boolean
+          count?: number
+          error?: string
+        }
+
+        if (!claimsRes.ok || !claimsJson.ok) {
+          throw new Error(claimsJson.error || "Failed to load claims")
+        }
+
+        if (!cancelled) {
+          setPendingClaimsCount(typeof claimsJson.count === "number" ? claimsJson.count : 0)
+        }
+      } catch {
+        if (!cancelled) {
+          setPendingClaimsCount(0)
+        }
+      }
+    }
+
+    void loadListings()
+    void loadPendingClaimsCount()
+
     return () => {
       cancelled = true
     }
-  }, [user, user?.id, user?.role])
+  }, [user?.id, user?.role, syncTick])
 
   const stats = useMemo(() => {
-    const totalLost = listings.filter((l) => l.type === "lost").length
-    const totalFound = listings.filter((l) => l.type === "found").length
-    const totalMatched = listings.filter((l) => l.status === "matched").length
-    const totalClaimed = listings.filter((l) => l.status === "claimed").length
+    let totalLost = 0
+    let totalFound = 0
+    let totalMatched = 0
+    let totalClaimed = 0
+
+    for (const listing of listings) {
+      if (listing.type === "lost") totalLost += 1
+      if (listing.type === "found") totalFound += 1
+      if (listing.status === "matched") totalMatched += 1
+      if (listing.status === "claimed") totalClaimed += 1
+    }
 
     return {
       total_lost: totalLost,
@@ -322,3 +373,4 @@ export default function DashboardPage() {
     </div>
   )
 }
+

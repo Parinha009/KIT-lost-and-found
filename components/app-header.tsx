@@ -83,7 +83,7 @@ export function AppHeader() {
       cancelled = true
       window.clearInterval(interval)
     }
-  }, [user, pathname])
+  }, [user?.id, user?.role])
 
   const initials = user?.name
     ?.split(" ")
@@ -92,8 +92,8 @@ export function AppHeader() {
     .toUpperCase()
     .slice(0, 2) || "U"
 
-  const handleLogout = () => {
-    logout()
+  const handleLogout = async () => {
+    await logout()
     router.push("/login")
   }
 
@@ -193,17 +193,25 @@ export function AppHeader() {
                   </div>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem asChild>
-                  <Link href="/profile" className="flex items-center cursor-pointer">
-                    <Settings className="mr-2 h-4 w-4" />
-                    Profile Settings
-                  </Link>
+                <DropdownMenuItem
+                  onSelect={(event) => {
+                    event.preventDefault()
+                    router.push("/profile")
+                  }}
+                  className="cursor-pointer"
+                >
+                  <Settings className="mr-2 h-4 w-4" />
+                  Profile Settings
                 </DropdownMenuItem>
-                <DropdownMenuItem asChild>
-                  <Link href="/my-listings" className="flex items-center cursor-pointer">
-                    <FileSearch className="mr-2 h-4 w-4" />
-                    My Listings
-                  </Link>
+                <DropdownMenuItem
+                  onSelect={(event) => {
+                    event.preventDefault()
+                    router.push("/my-listings")
+                  }}
+                  className="cursor-pointer"
+                >
+                  <FileSearch className="mr-2 h-4 w-4" />
+                  My Listings
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem

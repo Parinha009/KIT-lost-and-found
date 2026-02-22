@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { and, desc, eq, inArray } from "drizzle-orm"
+import { and, desc, eq, inArray, sql } from "drizzle-orm"
 import { getDbOrNull, dbSchema } from "@/lib/db"
 import type { Claim, Listing, User, UserRole } from "@/lib/types"
 import { createClaimSchema } from "@/lib/validators"
@@ -19,21 +19,23 @@ function getActor(request: Request): { id: string; role: UserRole } | null {
   return { id, role }
 }
 
-function mapListingStatus(status: string): Listing["status"] {
-  if (
-    status === "active" ||
-    status === "matched" ||
-    status === "claimed" ||
-    status === "closed" ||
-    status === "archived"
-  ) {
-    return status
-  }
-  return "active"
-}
-
 function mapListingType(type: string): Listing["type"] {
   return type === "found" ? "found" : "lost"
+}
+
+function toIsoString(value: unknown): string {
+  if (value instanceof Date) {
+    return value.toISOString()
+  }
+
+  if (typeof value === "string" || typeof value === "number") {
+    const parsed = new Date(value)
+    if (!Number.isNaN(parsed.getTime())) {
+      return parsed.toISOString()
+    }
+  }
+
+  return new Date(0).toISOString()
 }
 
 function mapUser(row: typeof dbSchema.users.$inferSelect): User {
@@ -45,44 +47,57 @@ function mapUser(row: typeof dbSchema.users.$inferSelect): User {
     role: row.role,
     avatar_url: row.avatarUrl || undefined,
     is_banned: row.isBanned,
-    created_at: row.createdAt.toISOString(),
-    updated_at: row.updatedAt.toISOString(),
+    created_at: toIsoString(row.createdAt),
+    updated_at: toIsoString(row.updatedAt),
   }
 }
 
-function mapListing(
-  row: typeof dbSchema.listings.$inferSelect,
-  photos: Array<typeof dbSchema.photos.$inferSelect>,
-  user?: typeof dbSchema.users.$inferSelect
-): Listing {
+function mapProfileToUser(profile: typeof dbSchema.profiles.$inferSelect | undefined): User | undefined {
+  if (!profile) return undefined
+
+  return {
+    id: profile.userId,
+    email: profile.campusEmail,
+    name: profile.fullName,
+    phone: profile.phone || undefined,
+    role: profile.role,
+    avatar_url: undefined,
+    is_banned: false,
+    created_at: toIsoString(profile.createdAt),
+    updated_at: toIsoString(profile.createdAt),
+  }
+}
+
+function mapListing(row: typeof dbSchema.items.$inferSelect, profile?: typeof dbSchema.profiles.$inferSelect): Listing {
+  const imageUrls = Array.isArray(row.imageUrls)
+    ? row.imageUrls.filter(
+        (value: unknown): value is string => typeof value === "string" && value.length > 0
+      )
+    : []
+
   return {
     id: row.id,
     type: mapListingType(row.type),
-    title: row.title,
+    title: row.name,
     description: row.description,
     category: row.category as Listing["category"],
     location: row.location as Listing["location"],
     location_details: row.locationDetails || undefined,
-    date_occurred: row.dateOccurred.toISOString(),
-    status: mapListingStatus(row.status),
+    date_occurred: toIsoString(row.dateOccurred),
+    status: "active",
     storage_location: row.storageLocation || undefined,
     storage_details: row.storageDetails || undefined,
-    matched_listing_id: row.matchedListingId || undefined,
-    image_urls: Array.isArray(row.imageUrls)
-      ? row.imageUrls.filter(
-          (value: unknown): value is string => typeof value === "string" && value.length > 0
-        )
-      : [],
-    user_id: row.userId,
-    user: user ? mapUser(user) : undefined,
-    photos: photos.map((photo) => ({
-      id: photo.id,
-      url: photo.url,
-      listing_id: photo.listingId,
-      created_at: photo.createdAt.toISOString(),
+    image_urls: imageUrls,
+    user_id: row.createdBy,
+    user: mapProfileToUser(profile),
+    photos: imageUrls.map((url, index) => ({
+      id: `${row.id}-photo-${index + 1}`,
+      url,
+      listing_id: row.id,
+      created_at: toIsoString(row.createdAt),
     })),
-    created_at: row.createdAt.toISOString(),
-    updated_at: row.updatedAt.toISOString(),
+    created_at: toIsoString(row.createdAt),
+    updated_at: toIsoString(row.updatedAt),
   }
 }
 
@@ -112,45 +127,25 @@ async function fetchClaimsByWhere(
 
   const listingRows =
     listingIds.length > 0
-      ? await db.select().from(dbSchema.listings).where(inArray(dbSchema.listings.id, listingIds))
+      ? await db.select().from(dbSchema.items).where(inArray(dbSchema.items.id, listingIds))
       : []
 
-  const photoRows =
-    listingIds.length > 0
-      ? await db
-          .select()
-          .from(dbSchema.photos)
-          .where(inArray(dbSchema.photos.listingId, listingIds))
-          .orderBy(desc(dbSchema.photos.createdAt))
+  const profileIds = [...new Set(listingRows.map((listing) => listing.createdBy))]
+  const profiles =
+    profileIds.length > 0
+      ? await db.select().from(dbSchema.profiles).where(inArray(dbSchema.profiles.userId, profileIds))
       : []
 
-  const userIds = [
-    ...new Set([
-      ...claimantIds,
-      ...reviewerIds,
-      ...listingRows.map((listing) => listing.userId),
-    ]),
-  ]
-
+  const userIds = [...new Set([...claimantIds, ...reviewerIds])]
   const users =
     userIds.length > 0
       ? await db.select().from(dbSchema.users).where(inArray(dbSchema.users.id, userIds))
       : []
 
   const userMap = new Map(users.map((user) => [user.id, user]))
-  const photosByListing = new Map<string, Array<typeof dbSchema.photos.$inferSelect>>()
-
-  for (const photo of photoRows) {
-    const list = photosByListing.get(photo.listingId) ?? []
-    list.push(photo)
-    photosByListing.set(photo.listingId, list)
-  }
-
+  const profileMap = new Map(profiles.map((profile) => [profile.userId, profile]))
   const listingMap = new Map(
-    listingRows.map((listing) => [
-      listing.id,
-      mapListing(listing, photosByListing.get(listing.id) ?? [], userMap.get(listing.userId)),
-    ])
+    listingRows.map((listing) => [listing.id, mapListing(listing, profileMap.get(listing.createdBy))])
   )
 
   return rows.map((row) => {
@@ -170,10 +165,10 @@ async function fetchClaimsByWhere(
       proof_description: row.proofDescription,
       proof_photos: row.proofPhotos ?? undefined,
       rejection_reason: row.rejectionReason || undefined,
-      handover_at: row.handoverAt ? row.handoverAt.toISOString() : undefined,
+      handover_at: row.handoverAt ? toIsoString(row.handoverAt) : undefined,
       handover_notes: row.handoverNotes || undefined,
-      created_at: row.createdAt.toISOString(),
-      updated_at: row.updatedAt.toISOString(),
+      created_at: toIsoString(row.createdAt),
+      updated_at: toIsoString(row.updatedAt),
     }
   })
 }
@@ -185,6 +180,7 @@ export async function GET(request: Request) {
   const url = new URL(request.url)
   const listingId = url.searchParams.get("listingId")
   const status = normalizeClaimStatus(url.searchParams.get("status"))
+  const countOnly = url.searchParams.get("countOnly") === "1"
 
   const actor = getActor(request)
   if (!actor) return jsonError("Unauthorized", 401)
@@ -202,9 +198,24 @@ export async function GET(request: Request) {
   const where = conditions.length > 0 ? and(...conditions) : undefined
 
   try {
+    if (countOnly) {
+      const rows = where
+        ? await db
+            .select({ count: sql<number>`count(*)` })
+            .from(dbSchema.claims)
+            .where(where)
+        : await db.select({ count: sql<number>`count(*)` }).from(dbSchema.claims)
+
+      const rawCount = rows[0]?.count
+      const count = typeof rawCount === "number" ? rawCount : Number(rawCount) || 0
+
+      return NextResponse.json({ ok: true, count })
+    }
+
     const claims = await fetchClaimsByWhere(where)
     return NextResponse.json({ ok: true, data: claims })
-  } catch {
+  } catch (error) {
+    console.error("[api/claims][GET] failed", error)
     return jsonError("Failed to load claims", 500)
   }
 }
@@ -249,18 +260,14 @@ export async function POST(request: Request) {
   try {
     const [listingRow] = await db
       .select()
-      .from(dbSchema.listings)
-      .where(eq(dbSchema.listings.id, parsed.data.listing_id))
+      .from(dbSchema.items)
+      .where(eq(dbSchema.items.id, parsed.data.listing_id))
       .limit(1)
 
     if (!listingRow) return jsonError("Listing not found", 404)
 
-    if (listingRow.userId === claimantId) {
+    if (listingRow.createdBy === claimantId) {
       return jsonError("You cannot claim your own listing", 422)
-    }
-
-    if (listingRow.status === "closed" || listingRow.status === "archived") {
-      return jsonError("This listing is not accepting claims", 422)
     }
 
     const now = new Date()
@@ -321,10 +328,10 @@ export async function POST(request: Request) {
       typeof claimant?.name === "string" && claimant.name.trim() ? claimant.name.trim() : "A user"
 
     await db.insert(dbSchema.notifications).values({
-      userId: listingRow.userId,
+      userId: listingRow.createdBy,
       type: "claim_submitted",
-      title: `New claim for "${listingRow.title}"`,
-      message: `${claimantName} submitted a claim for "${listingRow.title}".`,
+      title: `New claim for "${listingRow.name}"`,
+      message: `${claimantName} submitted a claim for "${listingRow.name}".`,
       isRead: false,
       relatedListingId: listingRow.id,
       relatedClaimId: created.id,
@@ -333,7 +340,8 @@ export async function POST(request: Request) {
 
     const claims = await fetchClaimsByWhere(eq(dbSchema.claims.id, created.id))
     return NextResponse.json({ ok: true, data: claims[0] })
-  } catch {
+  } catch (error) {
+    console.error("[api/claims][POST] failed", error)
     return jsonError("Failed to create claim", 500)
   }
 }

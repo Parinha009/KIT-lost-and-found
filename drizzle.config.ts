@@ -1,15 +1,9 @@
 import { defineConfig } from "drizzle-kit"
 
-const connectionString =
-  process.env.SUPABASE_DB_URL ||
-  process.env.DATABASE_URL ||
-  process.env.POSTGRES_URL ||
-  ""
+const connectionString = process.env.SUPABASE_DB_URL || ""
 
 if (!connectionString) {
-  throw new Error(
-    "Missing database connection string. Set SUPABASE_DB_URL, DATABASE_URL, or POSTGRES_URL."
-  )
+  throw new Error("Missing database connection string. Set SUPABASE_DB_URL.")
 }
 
 export default defineConfig({

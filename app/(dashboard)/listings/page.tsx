@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo, Suspense, useEffect, useCallback } from "react"
+import { useState, useMemo, Suspense, useEffect, useCallback, useDeferredValue } from "react"
 import { useSearchParams } from "next/navigation"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
@@ -16,6 +16,8 @@ import { Card, CardContent } from "@/components/ui/card"
 import { ListingCard } from "@/components/listing-card"
 import type { Listing } from "@/lib/types"
 import { ITEM_CATEGORIES, CAMPUS_LOCATIONS } from "@/lib/types"
+import { readListingsCache, writeListingsCache, isListingsCacheFresh } from "@/lib/client/listings-cache"
+import { subscribeListingsUpdated } from "@/lib/client/listings-sync"
 import { Search, Filter, X, Package } from "lucide-react"
 
 function ListingsPageContent() {
@@ -32,32 +34,69 @@ function ListingsPageContent() {
   const [showFilters, setShowFilters] = useState(false)
   const [allListings, setAllListings] = useState<Listing[]>([])
   const [loadError, setLoadError] = useState<string | null>(null)
+  const deferredSearch = useDeferredValue(search)
 
-  const refreshListings = useCallback(async () => {
+  const refreshListings = useCallback(async (options?: { force?: boolean }) => {
+    const cached = readListingsCache()
+    const hasFreshCache =
+      !options?.force &&
+      cached !== null &&
+      isListingsCacheFresh(cached)
+
+    if (hasFreshCache) {
+      setAllListings(cached.data)
+      setLoadError(null)
+      return
+    }
+
     try {
-      const res = await fetch("/api/listings", { cache: "no-store" })
+      const res = await fetch("/api/items", options?.force ? { cache: "no-store" } : undefined)
       const json = (await res.json()) as { ok?: boolean; data?: Listing[]; error?: string }
       if (!res.ok || !json.ok) {
         throw new Error(json.error || "Failed to load listings")
       }
 
+      const data = Array.isArray(json.data) ? json.data : []
+      writeListingsCache(data)
       setLoadError(null)
-      setAllListings(Array.isArray(json.data) ? json.data : [])
+      setAllListings(data)
     } catch (error) {
+      if (cached !== null) {
+        setAllListings(cached.data)
+        setLoadError("Showing cached listings. Live refresh failed.")
+        return
+      }
+
       setAllListings([])
       setLoadError(error instanceof Error ? error.message : "Failed to load listings")
     }
   }, [])
 
   useEffect(() => {
-    refreshListings()
+    void refreshListings({ force: Boolean(successMessage || createdListingId) })
   }, [refreshListings, successMessage, createdListingId])
+
+  useEffect(() => {
+    return subscribeListingsUpdated(() => {
+      void refreshListings({ force: true })
+    })
+  }, [refreshListings])
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      void refreshListings({ force: true })
+    }, 10_000)
+
+    return () => {
+      window.clearInterval(interval)
+    }
+  }, [refreshListings])
 
   const filteredListings = useMemo(() => {
     return allListings.filter((listing) => {
       // Search filter
-      if (search) {
-        const searchLower = search.toLowerCase()
+      if (deferredSearch) {
+        const searchLower = deferredSearch.toLowerCase()
         const matchesSearch =
           listing.title.toLowerCase().includes(searchLower) ||
           listing.description.toLowerCase().includes(searchLower) ||
@@ -79,7 +118,7 @@ function ListingsPageContent() {
 
       return true
     })
-  }, [allListings, search, typeFilter, categoryFilter, locationFilter, statusFilter])
+  }, [allListings, deferredSearch, typeFilter, categoryFilter, locationFilter, statusFilter])
 
   const activeFiltersCount = [
     typeFilter !== "all",
@@ -316,3 +355,4 @@ export default function ListingsPage() {
     </Suspense>
   )
 }
+

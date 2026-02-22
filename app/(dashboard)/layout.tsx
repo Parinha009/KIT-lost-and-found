@@ -15,20 +15,20 @@ export default function DashboardLayout({
   const { user, isLoading } = useAuth()
 
   useEffect(() => {
-    // Redirect to login if not authenticated and not loading
     if (!isLoading && user === null) {
-      router.push("/login")
+      router.replace("/login")
     }
   }, [user, isLoading, router])
 
-  // Show nothing while checking auth
-  if (!user) {
+  if (isLoading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="animate-pulse text-muted-foreground">Loading...</div>
       </div>
     )
   }
+
+  if (!user) return null
 
   return (
     <div className="min-h-screen bg-background">

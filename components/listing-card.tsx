@@ -1,5 +1,6 @@
 "use client"
 
+import { memo } from "react"
 import Image from "next/image"
 import Link from "next/link"
 import { Card, CardContent, CardFooter } from "@/components/ui/card"
@@ -13,13 +14,13 @@ interface ListingCardProps {
   listing: Listing
 }
 
-export function ListingCard({ listing }: ListingCardProps) {
+function ListingCardComponent({ listing }: ListingCardProps) {
   const primaryImageUrl =
     listing.image_urls?.[0]?.trim() || listing.photos?.[0]?.url?.trim() || ""
   const hasPhoto = primaryImageUrl.length > 0
 
   return (
-    <Card className="group h-full overflow-hidden gap-0 py-0 transition-all duration-200 ease-out motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-2 motion-safe:duration-300 motion-safe:hover:-translate-y-1 motion-safe:hover:shadow-lg">
+    <Card className="group h-full overflow-hidden gap-0 py-0 transition-all duration-200 ease-out motion-safe:hover:-translate-y-1 motion-safe:hover:shadow-lg">
       {/* Image */}
       <div className="relative h-[220px] w-full overflow-hidden bg-muted">
         {hasPhoto ? (
@@ -86,3 +87,5 @@ export function ListingCard({ listing }: ListingCardProps) {
     </Card>
   )
 }
+
+export const ListingCard = memo(ListingCardComponent)

@@ -18,19 +18,6 @@ function getActor(request: Request): { id: string; role: UserRole } | null {
   return { id, role }
 }
 
-function mapListingStatus(status: string): Listing["status"] {
-  if (
-    status === "active" ||
-    status === "matched" ||
-    status === "claimed" ||
-    status === "closed" ||
-    status === "archived"
-  ) {
-    return status
-  }
-  return "active"
-}
-
 function mapListingType(type: string): Listing["type"] {
   return type === "found" ? "found" : "lost"
 }
@@ -49,6 +36,22 @@ function mapUser(row: typeof dbSchema.users.$inferSelect): User {
   }
 }
 
+function mapProfileToUser(profile: typeof dbSchema.profiles.$inferSelect | undefined): User | undefined {
+  if (!profile) return undefined
+
+  return {
+    id: profile.userId,
+    email: profile.campusEmail,
+    name: profile.fullName,
+    phone: profile.phone || undefined,
+    role: profile.role,
+    avatar_url: undefined,
+    is_banned: false,
+    created_at: profile.createdAt.toISOString(),
+    updated_at: profile.createdAt.toISOString(),
+  }
+}
+
 async function getClaimById(id: string): Promise<Claim | null> {
   const db = getDbOrNull()
   if (!db) return null
@@ -63,22 +66,21 @@ async function getClaimById(id: string): Promise<Claim | null> {
 
   const [listingRow] = await db
     .select()
-    .from(dbSchema.listings)
-    .where(eq(dbSchema.listings.id, row.listingId))
+    .from(dbSchema.items)
+    .where(eq(dbSchema.items.id, row.listingId))
     .limit(1)
 
-  const photos = listingRow
-    ? await db
-        .select()
-        .from(dbSchema.photos)
-        .where(eq(dbSchema.photos.listingId, listingRow.id))
-    : []
+  const ownerProfile = listingRow
+    ? (
+        await db
+          .select()
+          .from(dbSchema.profiles)
+          .where(eq(dbSchema.profiles.userId, listingRow.createdBy))
+          .limit(1)
+      )[0]
+    : undefined
 
-  const userIds = [
-    row.claimantId,
-    row.reviewerId || null,
-    listingRow?.userId || null,
-  ].filter(Boolean) as string[]
+  const userIds = [row.claimantId, row.reviewerId || null].filter(Boolean) as string[]
 
   const users =
     userIds.length > 0
@@ -91,23 +93,30 @@ async function getClaimById(id: string): Promise<Claim | null> {
     ? {
         id: listingRow.id,
         type: mapListingType(listingRow.type),
-        title: listingRow.title,
+        title: listingRow.name,
         description: listingRow.description,
         category: listingRow.category as Listing["category"],
         location: listingRow.location as Listing["location"],
         location_details: listingRow.locationDetails || undefined,
         date_occurred: listingRow.dateOccurred.toISOString(),
-        status: mapListingStatus(listingRow.status),
+        status: "active" as const,
         storage_location: listingRow.storageLocation || undefined,
         storage_details: listingRow.storageDetails || undefined,
-        user_id: listingRow.userId,
-        user: userMap.get(listingRow.userId) ? mapUser(userMap.get(listingRow.userId)!) : undefined,
-        photos: photos.map((photo) => ({
-          id: photo.id,
-          url: photo.url,
-          listing_id: photo.listingId,
-          created_at: photo.createdAt.toISOString(),
-        })),
+        image_urls: Array.isArray(listingRow.imageUrls)
+          ? listingRow.imageUrls.filter(
+              (value: unknown): value is string => typeof value === "string" && value.length > 0
+            )
+          : [],
+        user_id: listingRow.createdBy,
+        user: mapProfileToUser(ownerProfile),
+        photos: (Array.isArray(listingRow.imageUrls) ? listingRow.imageUrls : []).map(
+          (url, index) => ({
+            id: `${listingRow.id}-photo-${index + 1}`,
+            url,
+            listing_id: listingRow.id,
+            created_at: listingRow.createdAt.toISOString(),
+          })
+        ),
         created_at: listingRow.createdAt.toISOString(),
         updated_at: listingRow.updatedAt.toISOString(),
       }
@@ -185,8 +194,8 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
 
     const [listing] = await db
       .select()
-      .from(dbSchema.listings)
-      .where(eq(dbSchema.listings.id, existing.listingId))
+      .from(dbSchema.items)
+      .where(eq(dbSchema.items.id, existing.listingId))
       .limit(1)
 
     if (!listing) return jsonError("Listing not found", 404)
@@ -211,11 +220,6 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
           : null
       update.handoverAt = body.handover_at ? new Date(body.handover_at) : now
       update.rejectionReason = null
-
-      await db
-        .update(dbSchema.listings)
-        .set({ status: "claimed", updatedAt: now })
-        .where(eq(dbSchema.listings.id, listing.id))
     }
 
     const reviewer = body.reviewer
@@ -246,13 +250,13 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
     const notificationType = status === "approved" ? "claim_approved" : "claim_rejected"
     const title =
       status === "approved"
-        ? `Claim approved for "${listing.title}"`
-        : `Claim rejected for "${listing.title}"`
+        ? `Claim approved for "${listing.name}"`
+        : `Claim rejected for "${listing.name}"`
 
     const message =
       status === "approved"
-        ? `Your claim for "${listing.title}" was approved. Please coordinate pickup with staff.`
-        : `Your claim for "${listing.title}" was rejected.${
+        ? `Your claim for "${listing.name}" was approved. Please coordinate pickup with staff.`
+        : `Your claim for "${listing.name}" was rejected.${
             update.rejectionReason ? ` Reason: ${update.rejectionReason}` : ""
           }`
 

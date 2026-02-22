@@ -16,14 +16,14 @@ export default function RegisterPage() {
   const router = useRouter()
   const { register } = useAuth()
   const [formData, setFormData] = React.useState({
-    name: "",
-    email: "",
-    phone: "",
-    password: "",
-    confirmPassword: "",
+    full_name: '',
+    campus_email: '',
+    phone: '',
+    password: '',
+    confirm_password: '',
   })
   const [showPassword, setShowPassword] = React.useState(false)
-  const [error, setError] = React.useState("")
+  const [error, setError] = React.useState('')
   const [fieldErrors, setFieldErrors] = React.useState<Record<string, string>>({})
   const [isSubmitting, setIsSubmitting] = React.useState(false)
 
@@ -40,7 +40,7 @@ export default function RegisterPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setError("")
+    setError('')
     setFieldErrors({})
 
     const parsed = registerSchema.safeParse(formData)
@@ -53,27 +53,39 @@ export default function RegisterPage() {
         }
       })
       setFieldErrors(nextErrors)
-      setError("Please fix the highlighted fields")
-      toast.error("Please fix the highlighted fields")
+      setError('Please fix the highlighted fields')
+      toast.error('Please fix the highlighted fields')
       return
     }
 
     setIsSubmitting(true)
+    try {
+      const result = await register({
+        email: parsed.data.campus_email,
+        password: parsed.data.password,
+        name: parsed.data.full_name,
+        phone: parsed.data.phone || undefined,
+      })
 
-    const result = await register({
-      email: parsed.data.email,
-      password: parsed.data.password,
-      name: parsed.data.name,
-      phone: parsed.data.phone || undefined,
-    })
+      if (result.success) {
+        if (result.requiresEmailConfirmation) {
+          toast.success('Account created. Please check your email to verify your account.')
+          router.push('/login')
+        } else {
+          toast.success('Account created successfully')
+          router.push('/dashboard')
+        }
+        return
+      }
 
-    if (result.success) {
-      toast.success("Account created successfully")
-      router.push("/dashboard")
-    } else {
+      setError(result.error || 'Registration failed')
+      toast.error(result.error || 'Registration failed')
+    } catch {
+      const message = 'Unable to create account right now. Please try again.'
+      setError(message)
+      toast.error(message)
+    } finally {
       setIsSubmitting(false)
-      setError(result.error || "Registration failed")
-      toast.error(result.error || "Registration failed")
     }
   }
 
@@ -105,7 +117,7 @@ export default function RegisterPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <form onSubmit={handleSubmit} className="space-y-4" noValidate>
               {error && (
                 <div className="p-3 text-sm text-destructive bg-destructive/10 rounded-md">
                   {error}
@@ -116,16 +128,16 @@ export default function RegisterPage() {
                 <Label htmlFor="name">Full Name *</Label>
                 <Input
                   id="name"
-                  name="name"
+                  name="full_name"
                   type="text"
                   placeholder="Enter your full name"
-                  value={formData.name}
+                  value={formData.full_name}
                   onChange={handleChange}
                   disabled={isSubmitting}
-                  aria-invalid={Boolean(fieldErrors.name)}
+                  aria-invalid={Boolean(fieldErrors.full_name)}
                 />
-                {fieldErrors.name && (
-                  <p className="text-sm text-destructive">{fieldErrors.name}</p>
+                {fieldErrors.full_name && (
+                  <p className="text-sm text-destructive">{fieldErrors.full_name}</p>
                 )}
               </div>
 
@@ -133,16 +145,16 @@ export default function RegisterPage() {
                 <Label htmlFor="email">Campus Email *</Label>
                 <Input
                   id="email"
-                  name="email"
+                  name="campus_email"
                   type="email"
                   placeholder="you@kit.edu.kh"
-                  value={formData.email}
+                  value={formData.campus_email}
                   onChange={handleChange}
                   disabled={isSubmitting}
-                  aria-invalid={Boolean(fieldErrors.email)}
+                  aria-invalid={Boolean(fieldErrors.campus_email)}
                 />
-                {fieldErrors.email && (
-                  <p className="text-sm text-destructive">{fieldErrors.email}</p>
+                {fieldErrors.campus_email && (
+                  <p className="text-sm text-destructive">{fieldErrors.campus_email}</p>
                 )}
               </div>
 
@@ -180,6 +192,7 @@ export default function RegisterPage() {
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    aria-label={showPassword ? "Hide password" : "Show password"}
                   >
                     {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
@@ -193,16 +206,16 @@ export default function RegisterPage() {
                 <Label htmlFor="confirmPassword">Confirm Password *</Label>
                 <Input
                   id="confirmPassword"
-                  name="confirmPassword"
+                  name="confirm_password"
                   type="password"
                   placeholder="Confirm your password"
-                  value={formData.confirmPassword}
+                  value={formData.confirm_password}
                   onChange={handleChange}
                   disabled={isSubmitting}
-                  aria-invalid={Boolean(fieldErrors.confirmPassword)}
+                  aria-invalid={Boolean(fieldErrors.confirm_password)}
                 />
-                {fieldErrors.confirmPassword && (
-                  <p className="text-sm text-destructive">{fieldErrors.confirmPassword}</p>
+                {fieldErrors.confirm_password && (
+                  <p className="text-sm text-destructive">{fieldErrors.confirm_password}</p>
                 )}
               </div>
 

@@ -1,6 +1,15 @@
 // User types
 export type UserRole = "student" | "staff" | "admin"
 
+export interface Profile {
+  user_id: string
+  full_name: string
+  campus_email: string
+  phone?: string
+  role: UserRole
+  created_at: string
+}
+
 export interface User {
   id: string
   email: string

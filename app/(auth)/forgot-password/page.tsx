@@ -1,43 +1,101 @@
 "use client"
 
-import React from "react"
-import { useState } from "react"
+import React, { useEffect, useState } from "react"
 import Link from "next/link"
+import { useAuth } from "@/lib/auth-context"
+import { forgotPasswordSchema } from "@/lib/validators"
+import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Search, ArrowLeft, Mail, CheckCircle } from "lucide-react"
 
+function isRateLimitMessage(message: string): boolean {
+  return /rate limit/i.test(message) || /too many requests/i.test(message)
+}
+
+function getForgotPasswordErrorMessage(message: string): string {
+  if (isRateLimitMessage(message)) {
+    return "Too many reset attempts. Please wait a moment and try again."
+  }
+
+  return message
+}
+
+function getRetrySeconds(message: string): number {
+  const match = message.match(/(\d+)\s*(second|seconds|sec|s)\b/i)
+  if (!match) return 60
+
+  const value = Number.parseInt(match[1], 10)
+  if (Number.isNaN(value) || value <= 0) return 60
+  return Math.min(value, 300)
+}
+
 export default function ForgotPasswordPage() {
+  const { forgotPassword } = useAuth()
   const [email, setEmail] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [isSubmitted, setIsSubmitted] = useState(false)
   const [error, setError] = useState("")
+  const [cooldownSeconds, setCooldownSeconds] = useState(0)
+
+  useEffect(() => {
+    if (cooldownSeconds <= 0) return
+    const timer = window.setInterval(() => {
+      setCooldownSeconds((current) => (current > 0 ? current - 1 : 0))
+    }, 1000)
+
+    return () => {
+      window.clearInterval(timer)
+    }
+  }, [cooldownSeconds])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError("")
 
-    if (!email) {
-      setError("Please enter your email address")
+    if (cooldownSeconds > 0) {
+      setError(`Please wait ${cooldownSeconds}s before requesting another reset link.`)
       return
     }
 
-    // Validate email format
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-    if (!emailRegex.test(email)) {
-      setError("Please enter a valid email address")
+    const parsed = forgotPasswordSchema.safeParse({ email: email.trim() })
+    if (!parsed.success) {
+      const message = parsed.error.errors[0]?.message || "Please enter a valid email"
+      setError(message)
       return
     }
 
     setIsLoading(true)
+    try {
+      const result = await forgotPassword(parsed.data.email)
 
-    // Simulate API call for demo
-    await new Promise((resolve) => setTimeout(resolve, 1500))
+      if (!result.success) {
+        const isRateLimited = isRateLimitMessage(result.error || "")
+        const friendlyMessage = getForgotPasswordErrorMessage(
+          result.error || "Unable to send reset link"
+        )
 
-    setIsLoading(false)
-    setIsSubmitted(true)
+        setError(friendlyMessage)
+        if (isRateLimited) {
+          setCooldownSeconds(getRetrySeconds(result.error || ""))
+        }
+        if (!isRateLimited) {
+          toast.error(friendlyMessage)
+        }
+        return
+      }
+
+      setIsSubmitted(true)
+      toast.success("Password reset email sent")
+    } catch {
+      const message = "Unable to send reset link right now. Please try again."
+      setError(message)
+      toast.error(message)
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   return (
@@ -138,15 +196,24 @@ export default function ForgotPasswordPage() {
                       type="email"
                       placeholder="you@kit.edu.kh"
                       value={email}
-                      onChange={(e) => setEmail(e.target.value)}
+                      onChange={(e) => {
+                        setEmail(e.target.value)
+                        if (error) {
+                          setError("")
+                        }
+                      }}
                       disabled={isLoading}
                       className="pl-10"
                     />
                   </div>
                 </div>
 
-                <Button type="submit" className="w-full" disabled={isLoading}>
-                  {isLoading ? "Sending reset link..." : "Send reset link"}
+                <Button type="submit" className="w-full" disabled={isLoading || cooldownSeconds > 0}>
+                  {isLoading
+                    ? "Sending reset link..."
+                    : cooldownSeconds > 0
+                      ? `Retry in ${cooldownSeconds}s`
+                      : "Send reset link"}
                 </Button>
 
                 <p className="text-center text-sm text-muted-foreground">

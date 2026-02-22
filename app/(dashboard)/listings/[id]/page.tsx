@@ -6,6 +6,8 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/lib/auth-context"
 import { createClaimSchema } from "@/lib/validators"
+import { removeListingFromCache, upsertListingCacheItem } from "@/lib/client/listings-cache"
+import { publishListingsUpdated, subscribeListingsUpdated } from "@/lib/client/listings-sync"
 import type { Claim, Listing, User } from "@/lib/types"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -74,7 +76,7 @@ export default function ListingDetailPage({ params }: ListingDetailPageProps) {
     async function loadListingAndClaims() {
       setIsLoadingListing(true)
       try {
-        const res = await fetch(`/api/listings/${resolvedParams.id}`, { cache: "no-store" })
+        const res = await fetch(`/api/items/${resolvedParams.id}`, { cache: "no-store" })
         const json = (await res.json()) as { ok?: boolean; data?: Listing; error?: string }
 
         const nextListing = res.ok && json.ok && json.data ? json.data : null
@@ -130,6 +132,20 @@ export default function ListingDetailPage({ params }: ListingDetailPageProps) {
       locationDetails: listing.location_details || "",
     })
   }, [listing])
+
+  useEffect(() => {
+    return subscribeListingsUpdated((event) => {
+      if (event.id && event.id !== resolvedParams.id) return
+
+      if (event.type === "deleted" && event.id === resolvedParams.id) {
+        toast("This listing was deleted.")
+        router.replace("/listings")
+        return
+      }
+
+      setRefreshKey((prev) => prev + 1)
+    })
+  }, [resolvedParams.id, router])
 
   if (isLoadingListing) {
     return (
@@ -246,7 +262,7 @@ export default function ListingDetailPage({ params }: ListingDetailPageProps) {
 
     setIsSavingMatch(true)
     try {
-      const res = await fetch(`/api/listings/${listing.id}`, {
+      const res = await fetch(`/api/items/${listing.id}`, {
         method: "PATCH",
         headers: {
           "content-type": "application/json",
@@ -262,6 +278,8 @@ export default function ListingDetailPage({ params }: ListingDetailPageProps) {
       }
 
       setListing(json.data)
+      upsertListingCacheItem(json.data)
+      publishListingsUpdated({ type: "updated", id: json.data.id })
       setMatchDialogOpen(false)
       setMatchedListingId("")
       setRefreshKey((prev) => prev + 1)
@@ -285,7 +303,7 @@ export default function ListingDetailPage({ params }: ListingDetailPageProps) {
 
     setIsSavingEdit(true)
     try {
-      const res = await fetch(`/api/listings/${listing.id}`, {
+      const res = await fetch(`/api/items/${listing.id}`, {
         method: "PATCH",
         headers: { "content-type": "application/json", ...actorHeaders },
         body: JSON.stringify({
@@ -302,6 +320,8 @@ export default function ListingDetailPage({ params }: ListingDetailPageProps) {
       }
 
       setListing(json.data)
+      upsertListingCacheItem(json.data)
+      publishListingsUpdated({ type: "updated", id: json.data.id })
 
       setEditDialogOpen(false)
       setRefreshKey((prev) => prev + 1)
@@ -315,7 +335,7 @@ export default function ListingDetailPage({ params }: ListingDetailPageProps) {
     if (!listing) return
 
     try {
-      const res = await fetch(`/api/listings/${listing.id}`, {
+      const res = await fetch(`/api/items/${listing.id}`, {
         method: "PATCH",
         headers: { "content-type": "application/json", ...actorHeaders },
         body: JSON.stringify({ status: "closed" }),
@@ -328,6 +348,8 @@ export default function ListingDetailPage({ params }: ListingDetailPageProps) {
       }
 
       setListing(json.data)
+      upsertListingCacheItem(json.data)
+      publishListingsUpdated({ type: "updated", id: json.data.id })
 
       setRefreshKey((prev) => prev + 1)
       toast.success("Listing closed")
@@ -342,7 +364,7 @@ export default function ListingDetailPage({ params }: ListingDetailPageProps) {
 
     setIsDeleting(true)
     try {
-      const res = await fetch(`/api/listings/${listing.id}`, {
+      const res = await fetch(`/api/items/${listing.id}`, {
         method: "DELETE",
         headers: actorHeaders,
       })
@@ -354,6 +376,8 @@ export default function ListingDetailPage({ params }: ListingDetailPageProps) {
       }
 
       toast.success("Listing deleted")
+      removeListingFromCache(listing.id)
+      publishListingsUpdated({ type: "deleted", id: listing.id })
       router.push("/listings")
     } finally {
       setIsDeleting(false)
@@ -840,3 +864,4 @@ export default function ListingDetailPage({ params }: ListingDetailPageProps) {
     </div>
   )
 }
+

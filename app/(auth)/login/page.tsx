@@ -6,22 +6,15 @@ import { useRouter } from "next/navigation"
 import { Search, Eye, EyeOff, ArrowLeft } from "lucide-react"
 import { useAuth } from "@/lib/auth-context"
 import { loginSchema } from "@/lib/validators"
+import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 
-type DemoRole = "student" | "staff" | "admin"
-
 interface FieldErrors {
   email?: string
   password?: string
-}
-
-const demoEmails: Record<DemoRole, string> = {
-  student: "student@kit.edu.kh",
-  staff: "security@kit.edu.kh",
-  admin: "admin@kit.edu.kh",
 }
 
 export default function LoginPage() {
@@ -57,11 +50,10 @@ export default function LoginPage() {
       setFieldErrors((prev) => ({ ...prev, password: undefined }))
     }
   }
-
   const validateForm = () => {
     const nextErrors: FieldErrors = {}
     const parsed = loginSchema.safeParse({
-      email: email.trim(),
+      email,
       password,
     })
 
@@ -81,7 +73,7 @@ export default function LoginPage() {
 
     return {
       isValid: Object.keys(nextErrors).length === 0,
-      trimmedEmail: email.trim(),
+      normalizedEmail: parsed.success ? parsed.data.email : email.trim(),
     }
   }
 
@@ -89,41 +81,25 @@ export default function LoginPage() {
     e.preventDefault()
     setFormError("")
 
-    const { isValid, trimmedEmail } = validateForm()
+    const { isValid, normalizedEmail } = validateForm()
     if (!isValid) {
       return
     }
 
     setIsSubmitting(true)
     try {
-      const result = await login(trimmedEmail, password)
+      const result = await login(normalizedEmail, password)
       if (result.success) {
+        toast.success("Signed in successfully")
         router.push("/dashboard")
         return
       }
 
       setFormError(result.error || "Unable to sign in. Please try again.")
+      toast.error(result.error || "Unable to sign in. Please try again.")
     } catch {
       setFormError("Unable to sign in right now. Please try again.")
-    } finally {
-      setIsSubmitting(false)
-    }
-  }
-
-  const handleDemoLogin = async (role: DemoRole) => {
-    setFormError("")
-    setFieldErrors({})
-    setIsSubmitting(true)
-    try {
-      const result = await login(demoEmails[role], "demo")
-      if (result.success) {
-        router.push("/dashboard")
-        return
-      }
-
-      setFormError(result.error || "Demo login failed. Please try again.")
-    } catch {
-      setFormError("Demo login failed. Please try again.")
+      toast.error("Unable to sign in right now. Please try again.")
     } finally {
       setIsSubmitting(false)
     }
@@ -222,47 +198,6 @@ export default function LoginPage() {
                 {isSubmitting ? "Signing in..." : "Sign in"}
               </Button>
             </form>
-
-            <div className="mt-6">
-              <div className="relative">
-                <div className="absolute inset-0 flex items-center">
-                  <span className="w-full border-t border-border" />
-                </div>
-                <div className="relative flex justify-center text-xs uppercase">
-                  <span className="bg-card px-2 text-muted-foreground">Demo accounts</span>
-                </div>
-              </div>
-
-              <div className="mt-4 grid grid-cols-3 gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handleDemoLogin("student")}
-                  disabled={isFormDisabled}
-                >
-                  Student
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handleDemoLogin("staff")}
-                  disabled={isFormDisabled}
-                >
-                  Staff
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handleDemoLogin("admin")}
-                  disabled={isFormDisabled}
-                >
-                  Admin
-                </Button>
-              </div>
-            </div>
 
             <p className="mt-6 text-center text-sm text-muted-foreground">
               {"Don't have an account? "}

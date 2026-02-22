@@ -2,7 +2,7 @@
 
 import React from "react"
 
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { useAuth } from "@/lib/auth-context"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ListingCard } from "@/components/listing-card"
+import { subscribeListingsUpdated } from "@/lib/client/listings-sync"
 import type { Listing } from "@/lib/types"
 import { Plus, Package, Search, FileText } from "lucide-react"
 
@@ -18,41 +19,50 @@ export default function MyListingsPage() {
   const [allListings, setAllListings] = useState<Listing[]>([])
   const [loadError, setLoadError] = useState<string | null>(null)
 
-  useEffect(() => {
-    let cancelled = false
-
-    async function refreshListings() {
-      if (!user) {
-        if (!cancelled) setAllListings([])
-        return
-      }
-
-      try {
-        const res = await fetch(`/api/listings?userId=${encodeURIComponent(user.id)}`, {
-          cache: "no-store",
-        })
-        const json = (await res.json()) as { ok?: boolean; data?: Listing[]; error?: string }
-        if (!res.ok || !json.ok) {
-          throw new Error(json.error || "Failed to load listings")
-        }
-
-        if (!cancelled) {
-          setLoadError(null)
-          setAllListings(Array.isArray(json.data) ? json.data : [])
-        }
-      } catch (error) {
-        if (!cancelled) {
-          setAllListings([])
-          setLoadError(error instanceof Error ? error.message : "Failed to load listings")
-        }
-      }
+  const refreshListings = useCallback(async () => {
+    if (!user) {
+      setAllListings([])
+      return
     }
 
-    refreshListings()
-    return () => {
-      cancelled = true
+    try {
+      const res = await fetch(`/api/items?userId=${encodeURIComponent(user.id)}`, {
+        cache: "no-store",
+      })
+      const json = (await res.json()) as { ok?: boolean; data?: Listing[]; error?: string }
+      if (!res.ok || !json.ok) {
+        throw new Error(json.error || "Failed to load listings")
+      }
+
+      setLoadError(null)
+      setAllListings(Array.isArray(json.data) ? json.data : [])
+    } catch (error) {
+      setAllListings([])
+      setLoadError(error instanceof Error ? error.message : "Failed to load listings")
     }
   }, [user])
+
+  useEffect(() => {
+    void (async () => {
+      await refreshListings()
+    })()
+  }, [refreshListings])
+
+  useEffect(() => {
+    return subscribeListingsUpdated(() => {
+      void refreshListings()
+    })
+  }, [refreshListings])
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      void refreshListings()
+    }, 10_000)
+
+    return () => {
+      window.clearInterval(interval)
+    }
+  }, [refreshListings])
 
   const myListings = useMemo(() => {
     return allListings.filter((listing) => listing.user_id === user?.id)
@@ -244,3 +254,4 @@ export default function MyListingsPage() {
     </div>
   )
 }
+

@@ -5,11 +5,7 @@ import { sql } from "drizzle-orm"
 import postgres from "postgres"
 import * as schema from "@/lib/db/schema"
 
-const DATABASE_URL =
-  process.env.SUPABASE_DB_URL ||
-  process.env.DATABASE_URL ||
-  process.env.POSTGRES_URL ||
-  ""
+const CONNECTION_STRING = process.env.SUPABASE_DB_URL || ""
 
 type DrizzleDatabase = ReturnType<typeof drizzle<typeof schema>>
 
@@ -21,11 +17,11 @@ declare global {
 }
 
 function isConfigured() {
-  return DATABASE_URL.length > 0
+  return CONNECTION_STRING.length > 0
 }
 
 function createDatabase() {
-  const sqlClient = postgres(DATABASE_URL, {
+  const sqlClient = postgres(CONNECTION_STRING, {
     // Keep the pool small for Supabase, but >1 so a single slow query doesn't stall the whole app.
     max: 3,
     prepare: false,
@@ -69,9 +65,7 @@ export function getDbOrNull(): DrizzleDatabase | null {
 export function getDb(): DrizzleDatabase {
   const db = getDbOrNull()
   if (!db) {
-    throw new Error(
-      "Database URL is not configured. Set SUPABASE_DB_URL or DATABASE_URL."
-    )
+    throw new Error("Database URL is not configured. Set SUPABASE_DB_URL.")
   }
   return db
 }

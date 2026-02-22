@@ -4,6 +4,38 @@ import {
   CAMPUS_LOCATIONS,
 } from './types'
 
+const campusEmailSchema = z
+  .string()
+  .trim()
+  .toLowerCase()
+  .email('Please enter a valid email address')
+  .refine((value) => value.endsWith('@kit.edu.kh'), {
+    message: 'Please use your KIT campus email (@kit.edu.kh)',
+  })
+
+const strongPasswordSchema = z
+  .string()
+  .min(8, 'Password must be at least 8 characters')
+  .max(100, 'Password must not exceed 100 characters')
+  .refine((value) => /[A-Z]/.test(value), {
+    message: 'Password must include at least one uppercase letter',
+  })
+  .refine((value) => /[a-z]/.test(value), {
+    message: 'Password must include at least one lowercase letter',
+  })
+  .refine((value) => /\d/.test(value), {
+    message: 'Password must include at least one number',
+  })
+
+const phoneSchema = z
+  .string()
+  .trim()
+  .transform((value) => value.replace(/[\s-]/g, ''))
+  .refine((value) => value === '' || /^\+?\d{8,15}$/.test(value), {
+    message: 'Phone must be numeric and 8 to 15 digits (optional + prefix)',
+  })
+  .transform((value) => (value === '' ? undefined : value))
+
 // Create listing form validation
 export const createListingSchema = z.object({
   type: z.enum(['lost', 'found'] as const, {
@@ -88,48 +120,50 @@ export type ListingFiltersInput = z.infer<typeof listingFiltersSchema>
 
 // Login form validation
 export const loginSchema = z.object({
-  email: z
-    .string()
-    .trim()
-    .email("Please enter a valid email address")
-    .refine((value) => value.toLowerCase().endsWith("@kit.edu.kh"), {
-      message: "Please use your KIT campus email (@kit.edu.kh)",
-    }),
-  password: z.string().min(1, "Password is required"),
+  email: campusEmailSchema,
+  password: z.string().min(1, 'Password is required'),
 })
 
 export type LoginInput = z.infer<typeof loginSchema>
 
-// Register form validation
-export const registerSchema = z
-  .object({
-    name: z
-      .string()
-      .trim()
-      .min(2, "Full name must be at least 2 characters")
-      .max(100, "Full name must not exceed 100 characters"),
-    email: z
-      .string()
-      .trim()
-      .email("Please enter a valid email address")
-      .refine((value) => value.endsWith("@kit.edu.kh"), {
-        message: "Please use your KIT campus email (@kit.edu.kh)",
-      }),
-    phone: z
-      .string()
-      .trim()
-      .max(30, "Phone number must not exceed 30 characters")
-      .optional()
-      .or(z.literal("")),
-    password: z
-      .string()
-      .min(6, "Password must be at least 6 characters")
-      .max(100, "Password must not exceed 100 characters"),
-    confirmPassword: z.string().min(1, "Please confirm your password"),
+const registerPayloadSchema = z.object({
+  full_name: z
+    .string()
+    .trim()
+    .min(2, 'Full name must be at least 2 characters')
+    .max(50, 'Full name must not exceed 50 characters'),
+  campus_email: campusEmailSchema,
+  phone: phoneSchema,
+  password: strongPasswordSchema,
+})
+
+export const registerSchema = registerPayloadSchema
+  .extend({
+    confirm_password: z.string().min(1, 'Please confirm your password'),
   })
-  .refine((data) => data.password === data.confirmPassword, {
-    message: "Passwords do not match",
-    path: ["confirmPassword"],
+  .refine((data) => data.password === data.confirm_password, {
+    message: 'Passwords do not match',
+    path: ['confirm_password'],
   })
 
 export type RegisterInput = z.infer<typeof registerSchema>
+export type RegisterPayloadInput = z.infer<typeof registerPayloadSchema>
+export { registerPayloadSchema }
+
+export const forgotPasswordSchema = z.object({
+  email: campusEmailSchema,
+})
+
+export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>
+
+export const resetPasswordSchema = z
+  .object({
+    password: strongPasswordSchema,
+    confirmPassword: z.string().min(1, 'Please confirm your password'),
+  })
+  .refine((data) => data.password === data.confirmPassword, {
+    message: 'Passwords do not match',
+    path: ['confirmPassword'],
+  })
+
+export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>

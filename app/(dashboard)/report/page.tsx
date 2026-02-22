@@ -7,6 +7,8 @@ import { useRouter, useSearchParams } from "next/navigation"
 import { useAuth } from "@/lib/auth-context"
 import { createListingSchema } from "@/lib/validators"
 import { uploadListingImages } from "@/lib/upload-adapter"
+import { upsertListingCacheItem } from "@/lib/client/listings-cache"
+import { publishListingsUpdated } from "@/lib/client/listings-sync"
 import type { Listing } from "@/lib/types"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -169,7 +171,7 @@ function ReportPageContent() {
         return
       }
 
-      const res = await fetch("/api/listings", {
+      const res = await fetch("/api/items", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
@@ -204,7 +206,7 @@ function ReportPageContent() {
             strict: true,
           })
         } catch (error) {
-          await fetch(`/api/listings/${createdListing.id}`, {
+          await fetch(`/api/items/${createdListing.id}`, {
             method: "DELETE",
             headers: {
               "x-user-id": user.id,
@@ -215,7 +217,7 @@ function ReportPageContent() {
         }
 
         if (uploadedPhotoUrls.length > 0) {
-          const patchRes = await fetch(`/api/listings/${createdListing.id}`, {
+          const patchRes = await fetch(`/api/items/${createdListing.id}`, {
             method: "PATCH",
             headers: {
               "content-type": "application/json",
@@ -239,6 +241,8 @@ function ReportPageContent() {
       }
 
       const itemType = activeTab === "lost" ? "Lost" : "Found"
+      upsertListingCacheItem(createdListing)
+      publishListingsUpdated({ type: "created", id: createdListing.id })
       toast.success(`${itemType} item reported successfully!`)
       router.push(`/listings?success=true&type=${activeTab}&created=${createdListing.id}`)
     } catch (error) {
@@ -647,3 +651,4 @@ export default function ReportPage() {
     </Suspense>
   )
 }
+

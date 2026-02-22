@@ -39,6 +39,37 @@ export const users = pgTable("users", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 })
 
+export const profiles = pgTable("profiles", {
+  userId: uuid("user_id").primaryKey(),
+  fullName: text("full_name").notNull(),
+  campusEmail: text("campus_email").notNull().unique(),
+  phone: text("phone"),
+  role: userRoleEnum("role").notNull().default("student"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+})
+
+export const items = pgTable("items", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: text("name").notNull(),
+  type: text("type").$type<"lost" | "found">().notNull(),
+  description: text("description").notNull(),
+  category: text("category").notNull(),
+  location: text("location").notNull(),
+  locationDetails: text("location_details"),
+  dateOccurred: timestamp("date_occurred", { withTimezone: true }).notNull(),
+  storageLocation: text("storage_location"),
+  storageDetails: text("storage_details"),
+  imageUrls: text("image_urls")
+    .array()
+    .notNull()
+    .default(sql`'{}'::text[]`),
+  createdBy: uuid("created_by")
+    .notNull()
+    .references(() => profiles.userId, { onDelete: "restrict" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+})
+
 export const listings = pgTable("listings", {
   id: uuid("id").primaryKey().defaultRandom(),
   type: listingTypeEnum("type").notNull(),
@@ -76,7 +107,7 @@ export const claims = pgTable("claims", {
   id: uuid("id").primaryKey().defaultRandom(),
   listingId: uuid("listing_id")
     .notNull()
-    .references(() => listings.id, { onDelete: "cascade" }),
+    .references(() => items.id, { onDelete: "cascade" }),
   claimantId: uuid("claimant_id")
     .notNull()
     .references(() => users.id, { onDelete: "restrict" }),
@@ -103,7 +134,7 @@ export const notifications = pgTable("notifications", {
   title: text("title").notNull(),
   message: text("message").notNull(),
   isRead: boolean("is_read").notNull().default(false),
-  relatedListingId: uuid("related_listing_id").references(() => listings.id, {
+  relatedListingId: uuid("related_listing_id").references(() => items.id, {
     onDelete: "set null",
   }),
   relatedClaimId: uuid("related_claim_id").references(() => claims.id, {
@@ -112,11 +143,31 @@ export const notifications = pgTable("notifications", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 })
 
-export const usersRelations = relations(users, ({ many }) => ({
+export const usersRelations = relations(users, ({ one, many }) => ({
+  profile: one(profiles, {
+    fields: [users.id],
+    references: [profiles.userId],
+  }),
   listings: many(listings),
   notifications: many(notifications),
   claimsAsClaimant: many(claims, { relationName: "claims_claimant" }),
   claimsAsReviewer: many(claims, { relationName: "claims_reviewer" }),
+}))
+
+export const profilesRelations = relations(profiles, ({ one, many }) => ({
+  user: one(users, {
+    fields: [profiles.userId],
+    references: [users.id],
+  }),
+  items: many(items),
+}))
+
+export const itemsRelations = relations(items, ({ one, many }) => ({
+  profile: one(profiles, {
+    fields: [items.createdBy],
+    references: [profiles.userId],
+  }),
+  claims: many(claims),
 }))
 
 export const listingsRelations = relations(listings, ({ one, many }) => ({
@@ -125,7 +176,6 @@ export const listingsRelations = relations(listings, ({ one, many }) => ({
     references: [users.id],
   }),
   photos: many(photos),
-  claims: many(claims),
 }))
 
 export const photosRelations = relations(photos, ({ one }) => ({
@@ -136,9 +186,9 @@ export const photosRelations = relations(photos, ({ one }) => ({
 }))
 
 export const claimsRelations = relations(claims, ({ one }) => ({
-  listing: one(listings, {
+  listing: one(items, {
     fields: [claims.listingId],
-    references: [listings.id],
+    references: [items.id],
   }),
   claimant: one(users, {
     fields: [claims.claimantId],
@@ -157,9 +207,9 @@ export const notificationsRelations = relations(notifications, ({ one }) => ({
     fields: [notifications.userId],
     references: [users.id],
   }),
-  listing: one(listings, {
+  listing: one(items, {
     fields: [notifications.relatedListingId],
-    references: [listings.id],
+    references: [items.id],
   }),
   claim: one(claims, {
     fields: [notifications.relatedClaimId],
@@ -168,6 +218,8 @@ export const notificationsRelations = relations(notifications, ({ one }) => ({
 }))
 
 export type DbUser = typeof users.$inferSelect
+export type DbProfile = typeof profiles.$inferSelect
+export type DbItem = typeof items.$inferSelect
 export type DbListing = typeof listings.$inferSelect
 export type DbPhoto = typeof photos.$inferSelect
 export type DbClaim = typeof claims.$inferSelect

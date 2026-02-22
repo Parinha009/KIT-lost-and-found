@@ -43,8 +43,8 @@ export default function ProfilePage() {
     setIsEditing(false)
   }
 
-  const handleLogout = () => {
-    logout()
+  const handleLogout = async () => {
+    await logout()
     window.location.href = "/login"
   }
 
@@ -155,35 +155,36 @@ export default function ProfilePage() {
         </CardContent>
       </Card>
 
-      {/* Demo Role Switcher */}
-      <Card className="border-dashed">
-        <CardHeader>
-          <CardTitle className="text-sm flex items-center gap-2">
-            <Shield className="w-4 h-4" />
-            Demo: Switch Role
-          </CardTitle>
-          <CardDescription>
-            For demonstration purposes, you can switch between different user roles
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center gap-4">
-            <Select value={user?.role} onValueChange={(v) => switchRole(v as "student" | "staff" | "admin")}>
-              <SelectTrigger className="w-[180px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="student">Student</SelectItem>
-                <SelectItem value="staff">Staff</SelectItem>
-                <SelectItem value="admin">Admin</SelectItem>
-              </SelectContent>
-            </Select>
-            <p className="text-sm text-muted-foreground">
-              This will change your permissions and available features
-            </p>
-          </div>
-        </CardContent>
-      </Card>
+      {user?.role === "admin" && (
+        <Card className="border-dashed">
+          <CardHeader>
+            <CardTitle className="text-sm flex items-center gap-2">
+              <Shield className="w-4 h-4" />
+              Demo: Switch Role
+            </CardTitle>
+            <CardDescription>
+              For demonstration purposes, you can switch between different user roles
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center gap-4">
+              <Select value={user?.role} onValueChange={(v) => { void switchRole(v as "student" | "staff" | "admin") }}>
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="student">Student</SelectItem>
+                  <SelectItem value="staff">Staff</SelectItem>
+                  <SelectItem value="admin">Admin</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-sm text-muted-foreground">
+                This will change your permissions and available features
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Danger Zone */}
       <Card className="border-destructive/50">

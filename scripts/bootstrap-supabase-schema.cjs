@@ -36,22 +36,16 @@ async function main() {
   loadDotEnv(path.join(root, ".env.local"))
   loadDotEnv(path.join(root, ".env"))
 
-  const connectionString =
-    process.env.SUPABASE_DB_URL ||
-    process.env.DATABASE_URL ||
-    process.env.POSTGRES_URL ||
-    ""
+  const connectionString = process.env.SUPABASE_DB_URL || ""
 
   if (!connectionString) {
     console.error(
-      "Missing database connection string. Set SUPABASE_DB_URL, DATABASE_URL, or POSTGRES_URL in .env.local."
+      "Missing database connection string. Set SUPABASE_DB_URL in .env.local."
     )
     process.exitCode = 1
     return
   }
 
-  // Lazy import so the script still loads even if dependencies are missing.
-  // (postgres is already a runtime dependency of the app.)
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const postgres = require("postgres")
 
@@ -63,7 +57,7 @@ async function main() {
     prepare: false,
     connection: {
       application_name: "kit-lost-and-found-bootstrap",
-      statement_timeout: 30_000,
+      statement_timeout: 120_000,
     },
   })
 
@@ -72,7 +66,7 @@ async function main() {
   try {
     await sql`create extension if not exists pgcrypto`
 
-    // Enums
+    // Enums used by legacy/public tables.
     await sql`
       do $$ begin
         create type user_role as enum ('student', 'staff', 'admin');
@@ -109,7 +103,7 @@ async function main() {
       end $$;
     `
 
-    // Tables
+    // Keep legacy tables available while we cut over to public.items.
     await sql`
       create table if not exists public.users (
         id uuid primary key default gen_random_uuid(),
@@ -143,16 +137,6 @@ async function main() {
         created_at timestamptz not null default now(),
         updated_at timestamptz not null default now()
       )
-    `
-
-    // Keep schema forward-compatible if the table was created before these columns existed.
-    await sql`
-      alter table public.listings
-        add column if not exists matched_listing_id uuid references public.listings(id) on delete set null
-    `
-    await sql`
-      alter table public.listings
-        add column if not exists image_urls text[] not null default '{}'::text[]
     `
     await sql`create index if not exists listings_user_id_idx on public.listings(user_id)`
 
@@ -200,10 +184,211 @@ async function main() {
     `
     await sql`create index if not exists notifications_user_id_idx on public.notifications(user_id)`
 
-    console.log("Done. Tables are ready: users, listings, photos, claims, notifications.")
+    // Profiles table (owner identity + role source for items).
+    await sql`
+      create table if not exists public.profiles (
+        user_id uuid not null,
+        full_name text not null,
+        campus_email text not null,
+        phone text null,
+        role text not null default 'student',
+        created_at timestamptz not null default now(),
+        constraint profiles_pkey primary key (user_id),
+        constraint profiles_user_id_fkey foreign key (user_id) references auth.users(id) on delete cascade,
+        constraint profiles_role_check check (role = any (array['student'::text, 'staff'::text, 'admin'::text])),
+        constraint profiles_campus_email_kit_check check (campus_email ~* '^[A-Z0-9._%+-]+@kit\\.edu\\.kh$')
+      )
+    `
+    await sql`create unique index if not exists profiles_campus_email_lower_key on public.profiles using btree (lower(campus_email))`
+
+    // New canonical items table.
+    await sql`
+      create table if not exists public.items (
+        id uuid primary key default gen_random_uuid(),
+        name text not null,
+        type text not null check (type in ('lost', 'found')),
+        description text not null,
+        category text not null,
+        location text not null,
+        location_details text null,
+        date_occurred timestamptz not null,
+        storage_location text null,
+        storage_details text null,
+        image_urls text[] not null default '{}'::text[],
+        created_by uuid not null references public.profiles(user_id) on delete restrict,
+        created_at timestamptz not null default now(),
+        updated_at timestamptz not null default now()
+      )
+    `
+    await sql`create index if not exists items_created_by_idx on public.items(created_by)`
+    await sql`create index if not exists items_type_idx on public.items(type)`
+    await sql`create index if not exists items_created_at_idx on public.items(created_at desc)`
+
+    // Security hardening: public.items is exposed via PostgREST; enforce RLS and block direct anon/auth access.
+    await sql`alter table public.items enable row level security`
+    await sql`
+      do $$
+      begin
+        if exists (select 1 from pg_roles where rolname = 'anon') then
+          execute 'revoke all on table public.items from anon';
+        end if;
+        if exists (select 1 from pg_roles where rolname = 'authenticated') then
+          execute 'revoke all on table public.items from authenticated';
+        end if;
+      end $$;
+    `
+
+    // Backfill profiles from legacy users table (idempotent).
+    await sql`
+      insert into public.profiles (user_id, full_name, campus_email, phone, role, created_at)
+      select
+        u.id,
+        coalesce(nullif(trim(u.name), ''), split_part(lower(u.email), '@', 1)) as full_name,
+        lower(u.email) as campus_email,
+        u.phone,
+        case
+          when u.role::text in ('student', 'staff', 'admin') then u.role::text
+          else 'student'
+        end as role,
+        coalesce(u.created_at, now()) as created_at
+      from public.users u
+      inner join auth.users au on au.id = u.id
+      where lower(u.email) ~ '^[a-z0-9._%+-]+@kit\\.edu\\.kh$'
+      on conflict (user_id) do nothing
+    `
+
+    // Copy listings data into items (preserve ids for claims/notifications migration).
+    await sql`
+      insert into public.items (
+        id,
+        name,
+        type,
+        description,
+        category,
+        location,
+        location_details,
+        date_occurred,
+        storage_location,
+        storage_details,
+        image_urls,
+        created_by,
+        created_at,
+        updated_at
+      )
+      select
+        l.id,
+        l.title,
+        l.type::text,
+        l.description,
+        l.category,
+        l.location,
+        l.location_details,
+        l.date_occurred,
+        l.storage_location,
+        l.storage_details,
+        coalesce(l.image_urls, '{}'::text[]),
+        l.user_id,
+        coalesce(l.created_at, now()),
+        coalesce(l.updated_at, now())
+      from public.listings l
+      inner join public.profiles p on p.user_id = l.user_id
+      on conflict (id) do update
+      set
+        name = excluded.name,
+        type = excluded.type,
+        description = excluded.description,
+        category = excluded.category,
+        location = excluded.location,
+        location_details = excluded.location_details,
+        date_occurred = excluded.date_occurred,
+        storage_location = excluded.storage_location,
+        storage_details = excluded.storage_details,
+        image_urls = excluded.image_urls,
+        created_by = excluded.created_by,
+        updated_at = excluded.updated_at
+    `
+
+    await sql`
+      delete from public.claims c
+      where not exists (
+        select 1 from public.items i where i.id = c.listing_id
+      )
+    `
+
+    // Re-link claims.listing_id foreign key to public.items(id).
+    await sql`
+      do $$
+      declare
+        listing_attnum int;
+        fk record;
+      begin
+        select a.attnum into listing_attnum
+        from pg_attribute a
+        where a.attrelid = 'public.claims'::regclass
+          and a.attname = 'listing_id'
+          and not a.attisdropped;
+
+        if listing_attnum is not null then
+          for fk in
+            select conname
+            from pg_constraint
+            where conrelid = 'public.claims'::regclass
+              and contype = 'f'
+              and array_position(conkey, listing_attnum) is not null
+          loop
+            execute format('alter table public.claims drop constraint %I', fk.conname);
+          end loop;
+
+          alter table public.claims
+            add constraint claims_listing_id_items_fkey
+            foreign key (listing_id) references public.items(id) on delete cascade;
+        end if;
+      end $$;
+    `
+
+    // Re-link notifications.related_listing_id to public.items(id).
+    await sql`
+      do $$
+      declare
+        related_attnum int;
+        fk record;
+      begin
+        select a.attnum into related_attnum
+        from pg_attribute a
+        where a.attrelid = 'public.notifications'::regclass
+          and a.attname = 'related_listing_id'
+          and not a.attisdropped;
+
+        if related_attnum is not null then
+          update public.notifications n
+          set related_listing_id = null
+          where related_listing_id is not null
+            and not exists (
+              select 1 from public.items i where i.id = n.related_listing_id
+            );
+
+          for fk in
+            select conname
+            from pg_constraint
+            where conrelid = 'public.notifications'::regclass
+              and contype = 'f'
+              and array_position(conkey, related_attnum) is not null
+          loop
+            execute format('alter table public.notifications drop constraint %I', fk.conname);
+          end loop;
+
+          alter table public.notifications
+            add constraint notifications_related_listing_id_items_fkey
+            foreign key (related_listing_id) references public.items(id) on delete set null;
+        end if;
+      end $$;
+    `
+
+    console.log(
+      "Done. Tables are ready: users, profiles, items, claims, notifications (listings kept for compatibility)."
+    )
 
     // Supabase Storage bucket (optional, but required for real image uploads).
-    // This uses the Postgres connection, so it does not require the service role key.
     try {
       const bucketName = "listing-images"
       const [{ exists }] =
