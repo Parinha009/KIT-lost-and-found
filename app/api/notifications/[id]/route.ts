@@ -5,15 +5,24 @@ import type { UserRole } from "@/lib/types"
 
 type Actor = { id: string; role: UserRole }
 
-function isUserRole(value: string | null): value is UserRole {
-  return value === "student" || value === "staff" || value === "admin"
-}
+async function getActorFromProfile(
+  db: NonNullable<ReturnType<typeof getDbOrNull>>,
+  request: Request
+): Promise<Actor | null> {
+  const headerUserId = request.headers.get("x-user-id")?.trim()
+  if (!headerUserId) return null
 
-function getActor(request: Request): Actor | null {
-  const id = request.headers.get("x-user-id")
-  const role = request.headers.get("x-user-role")
-  if (!id || !isUserRole(role)) return null
-  return { id, role }
+  const [profile] = await db
+    .select({
+      userId: dbSchema.profiles.userId,
+      role: dbSchema.profiles.role,
+    })
+    .from(dbSchema.profiles)
+    .where(eq(dbSchema.profiles.userId, headerUserId))
+    .limit(1)
+
+  if (!profile) return null
+  return { id: profile.userId, role: profile.role }
 }
 
 function jsonError(message: string, status = 400) {
@@ -24,7 +33,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
   const db = getDbOrNull()
   if (!db) return jsonError("Database not configured", 503)
 
-  const actor = getActor(request)
+  const actor = await getActorFromProfile(db, request)
   if (!actor) return jsonError("Unauthorized", 401)
 
   const { id } = await context.params
@@ -44,4 +53,3 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
     return jsonError("Failed to update notification", 500)
   }
 }
-

@@ -1,9 +1,11 @@
 import { relations, sql } from "drizzle-orm"
 import {
   boolean,
+  integer,
   jsonb,
   pgEnum,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   uuid,
@@ -143,6 +145,58 @@ export const notifications = pgTable("notifications", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 })
 
+export const chatConversations = pgTable("chat_conversations", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  claimId: uuid("claim_id").references(() => claims.id, { onDelete: "set null" }).unique(),
+  listingId: uuid("listing_id").references(() => items.id, { onDelete: "set null" }),
+  itemTitle: text("item_title").notNull().default("Conversation"),
+  itemStatus: text("item_status").notNull().default("active"),
+  participantA: uuid("participant_a")
+    .notNull()
+    .references(() => profiles.userId, { onDelete: "cascade" }),
+  participantB: uuid("participant_b")
+    .notNull()
+    .references(() => profiles.userId, { onDelete: "cascade" }),
+  lastMessage: text("last_message").notNull().default("No messages yet"),
+  lastMessageAt: timestamp("last_message_at", { withTimezone: true }).notNull().defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+})
+
+export const chatMessages = pgTable("chat_messages", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  conversationId: uuid("conversation_id")
+    .notNull()
+    .references(() => chatConversations.id, { onDelete: "cascade" }),
+  senderId: uuid("sender_id")
+    .notNull()
+    .references(() => profiles.userId, { onDelete: "cascade" }),
+  body: text("body").notNull().default(""),
+  attachments: jsonb("attachments")
+    .$type<Array<Record<string, unknown>>>()
+    .notNull()
+    .default(sql`'[]'::jsonb`),
+  editedAt: timestamp("edited_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+})
+
+export const chatConversationStates = pgTable(
+  "chat_conversation_states",
+  {
+    conversationId: uuid("conversation_id")
+      .notNull()
+      .references(() => chatConversations.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => profiles.userId, { onDelete: "cascade" }),
+    unreadCount: integer("unread_count").notNull().default(0),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.conversationId, table.userId] }),
+  })
+)
+
 export const usersRelations = relations(users, ({ one, many }) => ({
   profile: one(profiles, {
     fields: [users.id],
@@ -217,6 +271,51 @@ export const notificationsRelations = relations(notifications, ({ one }) => ({
   }),
 }))
 
+export const chatConversationsRelations = relations(chatConversations, ({ one, many }) => ({
+  claim: one(claims, {
+    fields: [chatConversations.claimId],
+    references: [claims.id],
+  }),
+  listing: one(items, {
+    fields: [chatConversations.listingId],
+    references: [items.id],
+  }),
+  participantAProfile: one(profiles, {
+    fields: [chatConversations.participantA],
+    references: [profiles.userId],
+    relationName: "chat_participant_a",
+  }),
+  participantBProfile: one(profiles, {
+    fields: [chatConversations.participantB],
+    references: [profiles.userId],
+    relationName: "chat_participant_b",
+  }),
+  messages: many(chatMessages),
+  participantStates: many(chatConversationStates),
+}))
+
+export const chatMessagesRelations = relations(chatMessages, ({ one }) => ({
+  conversation: one(chatConversations, {
+    fields: [chatMessages.conversationId],
+    references: [chatConversations.id],
+  }),
+  senderProfile: one(profiles, {
+    fields: [chatMessages.senderId],
+    references: [profiles.userId],
+  }),
+}))
+
+export const chatConversationStatesRelations = relations(chatConversationStates, ({ one }) => ({
+  conversation: one(chatConversations, {
+    fields: [chatConversationStates.conversationId],
+    references: [chatConversations.id],
+  }),
+  userProfile: one(profiles, {
+    fields: [chatConversationStates.userId],
+    references: [profiles.userId],
+  }),
+}))
+
 export type DbUser = typeof users.$inferSelect
 export type DbProfile = typeof profiles.$inferSelect
 export type DbItem = typeof items.$inferSelect
@@ -224,3 +323,6 @@ export type DbListing = typeof listings.$inferSelect
 export type DbPhoto = typeof photos.$inferSelect
 export type DbClaim = typeof claims.$inferSelect
 export type DbNotification = typeof notifications.$inferSelect
+export type DbChatConversation = typeof chatConversations.$inferSelect
+export type DbChatMessage = typeof chatMessages.$inferSelect
+export type DbChatConversationState = typeof chatConversationStates.$inferSelect

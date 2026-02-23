@@ -1,10 +1,11 @@
-import type { ListingStatus, UserRole } from "@/lib/types"
+import type { ListingStatus, ListingType, UserRole } from "@/lib/types"
 
 export interface Conversation {
   id: string
   participantName: string
   participantRole: UserRole
   itemId: string
+  itemType: ListingType
   itemTitle: string
   itemStatus: ListingStatus
   lastMessage: string

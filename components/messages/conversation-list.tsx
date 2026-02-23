@@ -28,7 +28,7 @@ export function ConversationList({
     <div className="h-full overflow-y-auto">
       {conversations.map((conversation) => {
         const isActive = conversation.id === selectedConversationId
-        const itemType = conversation.itemId === "listing-1" ? "lost" : "found"
+        const itemType = conversation.itemType
         return (
           <button
             key={conversation.id}

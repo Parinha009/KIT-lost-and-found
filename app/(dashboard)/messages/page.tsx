@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { MessageSquare, Search } from "lucide-react"
 import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
@@ -9,10 +9,8 @@ import { Input } from "@/components/ui/input"
 import { ConversationList } from "@/components/messages/conversation-list"
 import { ChatThread } from "@/components/messages/chat-thread"
 import { MessageComposer } from "@/components/messages/message-composer"
-import {
-  getInitialConversations,
-  getInitialMessages,
-} from "@/lib/messages/mock-store"
+import { useAuth } from "@/lib/auth-context"
+import { uploadListingImages } from "@/lib/upload-adapter"
 import type {
   Conversation,
   Message,
@@ -22,6 +20,21 @@ import type {
 
 const MAX_MEDIA_ATTACHMENTS = 4
 const MAX_MEDIA_SIZE_BYTES = 25 * 1024 * 1024
+
+type MessagesResponse = {
+  ok?: boolean
+  data?: {
+    conversations?: Conversation[]
+    messages?: Message[]
+  }
+  error?: string
+}
+
+type MessagesMutationResponse<T = unknown> = {
+  ok?: boolean
+  data?: T
+  error?: string
+}
 
 function sortConversationsByActivity(conversations: Conversation[]): Conversation[] {
   return [...conversations].sort(
@@ -50,19 +63,19 @@ function revokeAttachments(attachments: MessageAttachment[] | undefined) {
 }
 
 export default function MessagesPage() {
-  const [conversations, setConversations] = useState<Conversation[]>(
-    getInitialConversations
-  )
-  const [messages, setMessages] = useState<Message[]>(getInitialMessages)
+  const { user } = useAuth()
+  const [conversations, setConversations] = useState<Conversation[]>([])
+  const [messages, setMessages] = useState<Message[]>([])
   const [searchQuery, setSearchQuery] = useState("")
-  const [activeConversationId, setActiveConversationId] = useState<string | null>(
-    conversations[0]?.id ?? null
-  )
+  const [activeConversationId, setActiveConversationId] = useState<string | null>(null)
   const [draftMessage, setDraftMessage] = useState("")
   const [draftAttachments, setDraftAttachments] = useState<MessageAttachment[]>([])
+  const [isSending, setIsSending] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
 
   const messagesRef = useRef(messages)
   const draftAttachmentsRef = useRef(draftAttachments)
+  const draftAttachmentFilesRef = useRef(new Map<string, File>())
 
   const activeConversation = useMemo(
     () => conversations.find((conversation) => conversation.id === activeConversationId) ?? null,
@@ -103,12 +116,93 @@ export default function MessagesPage() {
     draftAttachmentsRef.current = draftAttachments
   }, [draftAttachments])
 
+  const clearDraftAttachments = useCallback(() => {
+    draftAttachmentFilesRef.current.clear()
+    setDraftAttachments((prev) => {
+      prev.forEach(revokeAttachmentUrl)
+      return []
+    })
+  }, [])
+
   useEffect(() => {
     return () => {
       messagesRef.current.forEach((message) => revokeAttachments(message.attachments))
       draftAttachmentsRef.current.forEach(revokeAttachmentUrl)
+      draftAttachmentFilesRef.current.clear()
     }
   }, [])
+
+  const refreshMessages = useCallback(async () => {
+    if (!user) {
+      setConversations([])
+      setMessages([])
+      setActiveConversationId(null)
+      setIsLoading(false)
+      return
+    }
+
+    setIsLoading(true)
+    try {
+      const res = await fetch("/api/messages", {
+        cache: "no-store",
+        headers: {
+          "x-user-id": user.id,
+        },
+      })
+
+      const json = (await res.json().catch(() => ({}))) as MessagesResponse
+      if (!res.ok || !json.ok) {
+        throw new Error(json.error || "Failed to load conversations")
+      }
+
+      const nextConversations = sortConversationsByActivity(
+        Array.isArray(json.data?.conversations) ? json.data.conversations : []
+      )
+      const nextMessages = Array.isArray(json.data?.messages) ? json.data.messages : []
+
+      setConversations(nextConversations)
+      setMessages(nextMessages)
+      setActiveConversationId((prev) => {
+        if (nextConversations.length === 0) return null
+        if (prev && nextConversations.some((conversation) => conversation.id === prev)) return prev
+        return nextConversations[0]?.id ?? null
+      })
+    } catch (error) {
+      setConversations([])
+      setMessages([])
+      setActiveConversationId(null)
+      toast.error(error instanceof Error ? error.message : "Failed to load conversations")
+    } finally {
+      setIsLoading(false)
+    }
+  }, [user])
+
+  useEffect(() => {
+    void refreshMessages()
+  }, [refreshMessages])
+
+  const runMessageAction = useCallback(
+    async <TData = unknown,>(payload: Record<string, unknown>): Promise<TData> => {
+      if (!user) throw new Error("You must be logged in.")
+
+      const res = await fetch("/api/messages", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-user-id": user.id,
+        },
+        body: JSON.stringify(payload),
+      })
+
+      const json = (await res.json().catch(() => ({}))) as MessagesMutationResponse<TData>
+      if (!res.ok || !json.ok) {
+        throw new Error(json.error || "Failed to process message action")
+      }
+
+      return json.data as TData
+    },
+    [user]
+  )
 
   const syncConversationFromMessages = (conversationId: string, nextMessages: Message[]) => {
     setConversations((prev) =>
@@ -141,6 +235,10 @@ export default function MessagesPage() {
   }
 
   const handleSelectConversation = (conversationId: string) => {
+    const selectedConversation = conversations.find(
+      (conversation) => conversation.id === conversationId
+    )
+
     setActiveConversationId(conversationId)
     setConversations((prev) =>
       prev.map((conversation) =>
@@ -148,10 +246,13 @@ export default function MessagesPage() {
       )
     )
     setDraftMessage("")
-    setDraftAttachments((prev) => {
-      prev.forEach(revokeAttachmentUrl)
-      return []
-    })
+    clearDraftAttachments()
+
+    if (selectedConversation && selectedConversation.unreadCount > 0) {
+      void runMessageAction({ action: "mark_read", conversationId }).catch((error) => {
+        console.error("[messages] mark_read failed", error)
+      })
+    }
   }
 
   const handleAttachFiles = (files: FileList | null) => {
@@ -193,14 +294,16 @@ export default function MessagesPage() {
         return
       }
 
+      const attachmentId = crypto.randomUUID()
       acceptedAttachments.push({
-        id: crypto.randomUUID(),
+        id: attachmentId,
         kind,
         url: URL.createObjectURL(file),
         fileName: file.name,
         mimeType: file.type,
         size: file.size,
       })
+      draftAttachmentFilesRef.current.set(attachmentId, file)
       openSlots -= 1
     })
 
@@ -225,41 +328,86 @@ export default function MessagesPage() {
       if (attachment) revokeAttachmentUrl(attachment)
       return prev.filter((current) => current.id !== attachmentId)
     })
+    draftAttachmentFilesRef.current.delete(attachmentId)
   }
 
-  const handleSendMessage = () => {
-    if (!activeConversation) return
+  const handleSendMessage = async () => {
+    if (!activeConversation || !user || isSending) return
 
     const body = draftMessage.trim()
     const attachments = draftAttachments
     if (!body && attachments.length === 0) return
 
-    const createdAt = new Date().toISOString()
-    const newMessage: Message = {
-      id: `msg-${Date.now()}`,
-      conversationId: activeConversation.id,
-      sender: "me",
-      body,
-      attachments,
-      createdAt,
-    }
+    setIsSending(true)
+    try {
+      let uploadedAttachments: MessageAttachment[] = []
 
-    setMessages((prev) => [...prev, newMessage])
-    setConversations((prev) =>
-      sortConversationsByActivity(
-        prev.map((conversation) =>
-          conversation.id === activeConversation.id
-            ? {
-                ...conversation,
-                lastMessage: getMessagePreview(newMessage),
-                lastMessageAt: createdAt,
-              }
-            : conversation
+      if (attachments.length > 0) {
+        const files = attachments
+          .map((attachment) => draftAttachmentFilesRef.current.get(attachment.id))
+          .filter((file): file is File => Boolean(file))
+
+        if (files.length !== attachments.length) {
+          throw new Error("Some attachments could not be prepared. Please re-attach files.")
+        }
+
+        const uploadedUrls = await uploadListingImages(files, {
+          userId: user.id,
+          listingId: activeConversation.id,
+          strict: true,
+        })
+
+        uploadedAttachments = attachments.map((attachment, index) => ({
+          ...attachment,
+          url: uploadedUrls[index] || attachment.url,
+        }))
+      }
+
+      const createdMessage = await runMessageAction<Message | undefined>({
+        action: "send",
+        conversationId: activeConversation.id,
+        body,
+        attachments: uploadedAttachments,
+      })
+
+      const newMessage: Message =
+        createdMessage &&
+        typeof createdMessage.id === "string" &&
+        typeof createdMessage.createdAt === "string"
+          ? createdMessage
+          : {
+              id: `local-${Date.now()}`,
+              conversationId: activeConversation.id,
+              sender: "me",
+              body,
+              attachments: uploadedAttachments,
+              createdAt: new Date().toISOString(),
+            }
+
+      setMessages((prev) => [...prev, newMessage])
+      setConversations((prev) =>
+        sortConversationsByActivity(
+          prev.map((conversation) =>
+            conversation.id === activeConversation.id
+              ? {
+                  ...conversation,
+                  lastMessage: getMessagePreview(newMessage),
+                  lastMessageAt: newMessage.createdAt,
+                  unreadCount: 0,
+                }
+              : conversation
+          )
         )
       )
-    )
-    setDraftMessage("")
-    setDraftAttachments([])
+      setDraftMessage("")
+      clearDraftAttachments()
+
+      void refreshMessages()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to send message")
+    } finally {
+      setIsSending(false)
+    }
   }
 
   const handleEditMessage = (messageId: string, nextBody: string) => {
@@ -276,19 +424,31 @@ export default function MessagesPage() {
       return
     }
 
-    const nextMessages = messages.map((message) =>
-      message.id === messageId
-        ? {
-            ...message,
-            body: trimmedBody,
-            editedAt: new Date().toISOString(),
-          }
-        : message
-    )
+    void (async () => {
+      try {
+        await runMessageAction({
+          action: "edit_message",
+          messageId,
+          body: trimmedBody,
+        })
 
-    setMessages(nextMessages)
-    syncConversationFromMessages(targetMessage.conversationId, nextMessages)
-    toast.success("Message updated.")
+        const nextMessages = messages.map((message) =>
+          message.id === messageId
+            ? {
+                ...message,
+                body: trimmedBody,
+                editedAt: new Date().toISOString(),
+              }
+            : message
+        )
+
+        setMessages(nextMessages)
+        syncConversationFromMessages(targetMessage.conversationId, nextMessages)
+        toast.success("Message updated.")
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "This message cannot be edited.")
+      }
+    })()
   }
 
   const handleDeleteMessage = (messageId: string) => {
@@ -299,66 +459,108 @@ export default function MessagesPage() {
       return
     }
 
-    const nextMessages = messages.filter((message) => message.id !== messageId)
-    revokeAttachments(targetMessage.attachments)
+    void (async () => {
+      try {
+        await runMessageAction({
+          action: "delete_message",
+          messageId,
+        })
 
-    setMessages(nextMessages)
-    syncConversationFromMessages(targetMessage.conversationId, nextMessages)
-    toast.success("Message deleted.")
+        const nextMessages = messages.filter((message) => message.id !== messageId)
+        revokeAttachments(targetMessage.attachments)
+
+        setMessages(nextMessages)
+        syncConversationFromMessages(targetMessage.conversationId, nextMessages)
+        toast.success("Message deleted.")
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "This message cannot be deleted.")
+      }
+    })()
   }
 
   const handleMarkConversationUnread = () => {
     if (!activeConversation) return
 
-    setConversations((prev) =>
-      prev.map((conversation) =>
-        conversation.id === activeConversation.id
-          ? { ...conversation, unreadCount: Math.max(conversation.unreadCount, 1) }
-          : conversation
-      )
-    )
-    toast.success("Conversation marked as unread.")
+    void (async () => {
+      try {
+        await runMessageAction({
+          action: "mark_unread",
+          conversationId: activeConversation.id,
+        })
+        setConversations((prev) =>
+          prev.map((conversation) =>
+            conversation.id === activeConversation.id
+              ? { ...conversation, unreadCount: Math.max(conversation.unreadCount, 1) }
+              : conversation
+          )
+        )
+        toast.success("Conversation marked as unread.")
+      } catch (error) {
+        toast.error(
+          error instanceof Error ? error.message : "Failed to mark conversation as unread."
+        )
+      }
+    })()
   }
 
   const handleClearConversation = () => {
     if (!activeConversation) return
 
-    const conversationMessages = messages.filter(
-      (message) => message.conversationId === activeConversation.id
-    )
-    conversationMessages.forEach((message) => revokeAttachments(message.attachments))
+    void (async () => {
+      try {
+        await runMessageAction({
+          action: "clear_conversation",
+          conversationId: activeConversation.id,
+        })
 
-    const nextMessages = messages.filter(
-      (message) => message.conversationId !== activeConversation.id
-    )
-    setMessages(nextMessages)
-    syncConversationFromMessages(activeConversation.id, nextMessages)
-    toast.success("Conversation cleared.")
+        const conversationMessages = messages.filter(
+          (message) => message.conversationId === activeConversation.id
+        )
+        conversationMessages.forEach((message) => revokeAttachments(message.attachments))
+
+        const nextMessages = messages.filter(
+          (message) => message.conversationId !== activeConversation.id
+        )
+        setMessages(nextMessages)
+        syncConversationFromMessages(activeConversation.id, nextMessages)
+        toast.success("Conversation cleared.")
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Failed to clear conversation.")
+      }
+    })()
   }
 
   const handleDeleteConversation = () => {
     if (!activeConversation) return
 
-    const conversationId = activeConversation.id
-    const nextConversations = sortConversationsByActivity(
-      conversations.filter((conversation) => conversation.id !== conversationId)
-    )
-    const removedMessages = messages.filter(
-      (message) => message.conversationId === conversationId
-    )
-    removedMessages.forEach((message) => revokeAttachments(message.attachments))
+    void (async () => {
+      try {
+        const conversationId = activeConversation.id
+        await runMessageAction({
+          action: "delete_conversation",
+          conversationId,
+        })
 
-    setConversations(nextConversations)
-    setMessages((prev) =>
-      prev.filter((message) => message.conversationId !== conversationId)
-    )
-    setActiveConversationId(nextConversations[0]?.id ?? null)
-    setDraftMessage("")
-    setDraftAttachments((prev) => {
-      prev.forEach(revokeAttachmentUrl)
-      return []
-    })
-    toast.success("Conversation deleted.")
+        const nextConversations = sortConversationsByActivity(
+          conversations.filter((conversation) => conversation.id !== conversationId)
+        )
+        const removedMessages = messages.filter(
+          (message) => message.conversationId === conversationId
+        )
+        removedMessages.forEach((message) => revokeAttachments(message.attachments))
+
+        setConversations(nextConversations)
+        setMessages((prev) =>
+          prev.filter((message) => message.conversationId !== conversationId)
+        )
+        setActiveConversationId(nextConversations[0]?.id ?? null)
+        setDraftMessage("")
+        clearDraftAttachments()
+        toast.success("Conversation deleted.")
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Failed to delete conversation.")
+      }
+    })()
   }
 
   return (
@@ -371,7 +573,7 @@ export default function MessagesPage() {
           </p>
         </div>
         <Badge variant="outline" className="w-fit rounded-md px-3 py-1 text-sm">
-          {unreadCount} unread
+          {isLoading ? "Loading..." : `${unreadCount} unread`}
         </Badge>
       </div>
 
@@ -414,6 +616,7 @@ export default function MessagesPage() {
                 onAttachFiles={handleAttachFiles}
                 onRemoveAttachment={handleRemoveAttachment}
                 onSend={handleSendMessage}
+                disabled={isSending}
               />
             ) : (
               <div className="flex items-center gap-2 text-sm text-muted-foreground">

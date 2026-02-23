@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useAuth } from "@/lib/auth-context"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -11,15 +11,23 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Separator } from "@/components/ui/separator"
 import { User, Mail, Phone, Calendar, Save, LogOut } from "lucide-react"
 import { formatDate } from "@/lib/date-utils"
+import { toast } from "sonner"
 
 export default function ProfilePage() {
-  const { user, logout } = useAuth()
+  const { user, logout, refreshProfile } = useAuth()
   const [isEditing, setIsEditing] = useState(false)
   const [formData, setFormData] = useState({
     name: user?.name || "",
     phone: user?.phone || "",
   })
   const [isSaving, setIsSaving] = useState(false)
+
+  useEffect(() => {
+    setFormData({
+      name: user?.name || "",
+      phone: user?.phone || "",
+    })
+  }, [user?.name, user?.phone])
 
   const initials = user?.name
     ?.split(" ")
@@ -30,10 +38,41 @@ export default function ProfilePage() {
 
   const handleSave = async () => {
     setIsSaving(true)
-    // Simulate API call
-    await new Promise((resolve) => setTimeout(resolve, 1000))
-    setIsSaving(false)
-    setIsEditing(false)
+    try {
+      if (!user) {
+        toast.error("You must be logged in.")
+        return
+      }
+
+      const res = await fetch("/api/profile", {
+        method: "PATCH",
+        headers: {
+          "content-type": "application/json",
+          "x-user-id": user.id,
+        },
+        body: JSON.stringify({
+          name: formData.name,
+          phone: formData.phone,
+        }),
+      })
+
+      const json = (await res.json().catch(() => ({}))) as {
+        ok?: boolean
+        error?: string
+      }
+
+      if (!res.ok || !json.ok) {
+        throw new Error(json.error || "Failed to update profile")
+      }
+
+      await refreshProfile()
+      setIsEditing(false)
+      toast.success("Profile updated")
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to update profile")
+    } finally {
+      setIsSaving(false)
+    }
   }
 
   const handleLogout = async () => {

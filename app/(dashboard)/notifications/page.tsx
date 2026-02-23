@@ -57,7 +57,6 @@ export default function NotificationsPage() {
           cache: "no-store",
           headers: {
             "x-user-id": actor.id,
-            "x-user-role": actor.role,
           },
         })
 
@@ -99,7 +98,6 @@ export default function NotificationsPage() {
           method: "PATCH",
           headers: {
             "x-user-id": actor.id,
-            "x-user-role": actor.role,
           },
         })
 
@@ -126,7 +124,6 @@ export default function NotificationsPage() {
           headers: {
             "content-type": "application/json",
             "x-user-id": actor.id,
-            "x-user-role": actor.role,
           },
           body: JSON.stringify({ user_id: actor.id }),
         })

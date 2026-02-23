@@ -426,8 +426,55 @@ async function main() {
       end $$;
     `
 
+    // Chat tables (persist messages + conversation state).
+    await sql`
+      create table if not exists public.chat_conversations (
+        id uuid primary key default gen_random_uuid(),
+        claim_id uuid unique references public.claims(id) on delete set null,
+        listing_id uuid references public.items(id) on delete set null,
+        item_title text not null default 'Conversation',
+        item_status text not null default 'active',
+        participant_a uuid not null references public.profiles(user_id) on delete cascade,
+        participant_b uuid not null references public.profiles(user_id) on delete cascade,
+        last_message text not null default 'No messages yet',
+        last_message_at timestamptz not null default now(),
+        created_at timestamptz not null default now(),
+        updated_at timestamptz not null default now()
+      )
+    `
+    await sql`create index if not exists chat_conversations_listing_id_idx on public.chat_conversations(listing_id)`
+    await sql`create index if not exists chat_conversations_participant_a_idx on public.chat_conversations(participant_a)`
+    await sql`create index if not exists chat_conversations_participant_b_idx on public.chat_conversations(participant_b)`
+    await sql`create index if not exists chat_conversations_last_message_at_idx on public.chat_conversations(last_message_at desc)`
+
+    await sql`
+      create table if not exists public.chat_messages (
+        id uuid primary key default gen_random_uuid(),
+        conversation_id uuid not null references public.chat_conversations(id) on delete cascade,
+        sender_id uuid not null references public.profiles(user_id) on delete cascade,
+        body text not null default '',
+        attachments jsonb not null default '[]'::jsonb,
+        edited_at timestamptz,
+        created_at timestamptz not null default now()
+      )
+    `
+    await sql`create index if not exists chat_messages_conversation_id_idx on public.chat_messages(conversation_id)`
+    await sql`create index if not exists chat_messages_sender_id_idx on public.chat_messages(sender_id)`
+    await sql`create index if not exists chat_messages_created_at_idx on public.chat_messages(created_at)`
+
+    await sql`
+      create table if not exists public.chat_conversation_states (
+        conversation_id uuid not null references public.chat_conversations(id) on delete cascade,
+        user_id uuid not null references public.profiles(user_id) on delete cascade,
+        unread_count integer not null default 0,
+        updated_at timestamptz not null default now(),
+        constraint chat_conversation_states_pkey primary key (conversation_id, user_id)
+      )
+    `
+    await sql`create index if not exists chat_conversation_states_user_id_idx on public.chat_conversation_states(user_id)`
+
     console.log(
-      "Done. Tables are ready: users, profiles, items, claims, notifications (listings kept for compatibility)."
+      "Done. Tables are ready: users, profiles, items, claims, notifications, chat_* (listings kept for compatibility)."
     )
 
     // Supabase Storage bucket (optional, but required for real image uploads).
