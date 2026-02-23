@@ -396,7 +396,7 @@ export default function ClaimsPage() {
               <CardContent>
                 <EmptyState
                   title="No claims yet"
-                  description="When you claim an item, it will appear here"
+                  description="This page shows claims submitted by your account. Claim a found item to see it here."
                 />
               </CardContent>
             </Card>

@@ -18,8 +18,13 @@ export function ConversationList({
 }: ConversationListProps) {
   if (conversations.length === 0) {
     return (
-      <div className="flex h-full items-center justify-center px-4 text-center text-sm text-muted-foreground">
-        No conversations found.
+      <div className="flex h-full items-center justify-center px-4 text-center">
+        <div>
+          <p className="text-sm text-muted-foreground">No conversations yet.</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            A chat appears after a claim is submitted on a found item.
+          </p>
+        </div>
       </div>
     )
   }

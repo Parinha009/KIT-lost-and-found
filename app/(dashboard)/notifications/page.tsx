@@ -191,10 +191,11 @@ export default function NotificationsPage() {
     )
   }
 
-  const EmptyState = ({ message }: { message: string }) => (
+  const EmptyState = ({ message, hint }: { message: string; hint?: string }) => (
     <div className="flex flex-col items-center justify-center py-12">
       <Inbox className="w-12 h-12 text-muted-foreground/50 mb-4" />
       <p className="text-muted-foreground">{message}</p>
+      {hint ? <p className="mt-1 text-xs text-muted-foreground text-center">{hint}</p> : null}
     </div>
   )
 
@@ -245,7 +246,10 @@ export default function NotificationsPage() {
                   ))}
                 </div>
               ) : (
-                <EmptyState message="No notifications yet" />
+                <EmptyState
+                  message="No notifications yet"
+                  hint="Notifications appear when claims are submitted or reviewed."
+                />
               )}
             </CardContent>
           </Card>
